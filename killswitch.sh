@@ -2,7 +2,7 @@
 #: Title: killswitch.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Date: 03/25/2019
-#: Updated: 04/09/2024
+#: Updated: 07/05/2024
 #: Purpose: Establish or terminate VPN killswitch
 #
 #: Usage: ./killswitch.sh [options]
@@ -21,6 +21,7 @@
 # Changes:
 # V1.0   - initial release
 # V1.1   - added new required steps for ubuntu 22.04 UFW
+# V1.2   - allow firewall rules reset even if tunnel is not established
 #
 # ----------------------------------------------------------------------
 # GNU General Public License
@@ -40,12 +41,12 @@
 # https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html
 #
 # ----------------------------------------------------------------------
-SUBNET=192.168.2.0/24       	    # Local Subnet Mask
-VPNIFACE=tun0			    # VPN interface
-DISABLED="false"		    # Killswitch terminate flag
-APPEND_LOG="true"           	    # Append to existing log file
-STDOUT_LOG_ONLY="true"      	    # Send messages to terminal and log file
-TEST_RUN="false"            	    # Simulate tasks but do not execute them
+SUBNET=192.168.2.0/24  # Local Subnet Mask
+VPNIFACE=tun0			     # VPN interface
+DISABLED="false"		   # Killswitch terminate flag
+APPEND_LOG="true"      # Append to existing log file
+STDOUT_LOG_ONLY="true" # Send messages to terminal and log file
+TEST_RUN="false"       # Simulate tasks but do not execute them
 # This value must come from *.ovpn file (e.g. /etc/openvpn/ovpn_tcp/ca1681.nordvpn.com.tcp.ovpn)
 TUNNEL="146.70.112.219 port 443 proto tcp"
 
@@ -55,8 +56,8 @@ description="Configures VPN killswitch (halt Internet if VPN drops)"
 usage="$scriptname [-s|-d|-t|-l|-o|-h|-v]"
 optionusage="-s:\tEnable the kill switch\n  -d:\tDisable the kill switch\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
 optionexamples=" ./"$scriptname"\n  ./"$scriptname" -so \n\n" 
-date_of_creation="2024-04-09"
-version=1.1.0
+date_of_creation="2024-07-05"
+version=1.2.0
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 LOGFILE="/var/log/$scriptname.log"  # Log file path
@@ -177,12 +178,14 @@ fi
 
 log "Started executing script tasks."
 
-# Ensure there is a tunnel established
-if [ $(ifconfig | grep -ic $VPNIFACE) -eq 0 ] ; then
-  STDOUT_LOG_ONLY="false"
-  log "There is no vpn tunnel established to secure (iface $VPNIFACE)."
-  exit 101
-fi
+# Do not apply firewall rules if killswitch is already applied
+if [[ $DISABLED == "false" ]]; then
+    if [ $(ifconfig | grep -ic $VPNIFACE) -eq 0 ] ; then
+    STDOUT_LOG_ONLY="false"
+    log "There is no vpn tunnel established to secure (iface $VPNIFACE)."
+    exit 101
+  fi
+fi 
 
 # Check for test-run action - write log preamble
 if [[ "$TEST_RUN" == "true" ]]; then
