@@ -2,7 +2,7 @@
 #: Title: nordvpn.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Date: 07/10/2015
-#: Updated: 02/09/2024
+#: Updated: 07/15/2024
 #: Purpose: Create a split VPN tunnel
 #
 #: Usage: ./nordvpn.sh [options]
@@ -22,7 +22,16 @@
 # V2.0   - echo new ip address after establishing tunnel
 # V2.3   - added feature to close tunnel without having to restart the server
 # V2.4   - added feature to reset firewall rules when closing tunnel
+# V2.5   - configureSplitTunnel shouldn't start transmission if IP did not change after creating tunnel
 #
+# Installation:
+# For ease of use, create an alias in ~/.bash_alias:
+#   alias nordvpn='sudo git/Bash/nordvpn.sh -lo'
+# 
+# Using aliased command: 
+#  Start tunnel: nordvpn -s
+#  Close tunnel: nordvpn -d
+# 
 # ----------------------------------------------------------------------
 # GNU General Public License
 # ----------------------------------------------------------------------
@@ -65,8 +74,8 @@ description="Establishes a split-tunnel VPN connection."
 usage="$scriptname [-d|-s|-t|-l|-o|-h|-v]"
 optionusage="-d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
 optionexamples=" ./"$scriptname"\n  ./"$scriptname" -so \n\n" 
-date_of_creation="2024-02-09"
-version=2.4.0
+date_of_creation="2024-07-15"
+version=2.5.0
 author="Neal T. Bailey"
 copyright="Copyright, Baileysoft Solutions"
 
@@ -82,7 +91,8 @@ export PATH=$PATH:/sbin
 function configureSplitTunnel 
 {
   log "Configuring split tunnel."
-  log "Starting internet ip: $(dig +short myip.opendns.com @resolver1.opendns.com)"
+  local ip="$(dig +short myip.opendns.com @resolver1.opendns.com)"
+  log "Starting internet ip: $ip"
   
   # Stop the transmission daemon  
   if [[ $TORRENT_SERVICE_INSTALLED = "true" ]]; then
@@ -94,8 +104,15 @@ function configureSplitTunnel
 
   # Wait for the background ovpn tunnel to connect
   sleep 5
-  log "Current internet ip: $(dig +short myip.opendns.com @resolver1.opendns.com)"
+  local ip2="$(dig +short myip.opendns.com @resolver1.opendns.com)"
+  log "Current internet ip: $ip2"
   
+  # Do not enable transmission-daemon if ip address did not change
+  if [[ "$ip" == "$ip2" ]]; then
+    log "ERROR: IP address did NOT change after creating tunnel. Check VPN settings and try again."    
+    exit 1
+  fi
+
   # Start the transmission daemon
   if [[ $TORRENT_SERVICE_INSTALLED = "true" ]]; then
     sleep 3
