@@ -16,6 +16,7 @@
 #:  08/13/2015: V0.7 - Added checks to ensure user is in group
 #:                     Added checks to determine if sudoer rights are correct
 #:  08/02/2022: V0.8 - Added vers=2.0 option since mount.cifs now defaults to encrypted V3.0 smbfs 
+#:  07/22/2024: V0.9 - Added -s arg to print the mapped shares that are already mounted to the terminal
 #:
 #: Usage: $ ./map-shares.sh
 #: Depends: requires package(s)
@@ -57,10 +58,10 @@
 scriptname=${0##*/}
 description="Mounts remote CIFS file shares."
 usage="$scriptname"
-optionusage="-l:\t New log file (existing log is clobbered)\n  -h:\t Print help (this screen)\n  -v:\t Print version info\n"
+optionusage="-l:\t New log file (existing log is clobbered)\n  -s:\t Display already mounted shares\n  -h:\t Print help (this screen)\n  -v:\t Print version info\n"
 optionexamples=" ./"$scriptname" -l \n\n" 
-date_of_creation="2015-08-13"
-version=0.8.0
+date_of_creation="2024-07-22"
+version=0.9.0
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 
@@ -101,6 +102,7 @@ BAK_IFS="$IFS" # Backup Internal Field Separator (IFS)
 ZEN_COLUMNS=( ) # The zenity columns
 SELECTED_ITEMS= # The zenity seleted items
 LST_SHARES=( )  # The array of shares from config file
+MNT_SHARES=( )  # The array of currently mounted shares 
 
 # Function definitions
 
@@ -121,7 +123,12 @@ function fill_shares_array()
     line=$(echo "$line" | sed 's|\\|\/|g')
     
     LST_SHARES[i]="$line" # Append array
-    i=$(($i + 1))        # increment counter
+    i=$(($i + 1))         # increment counter
+
+    # Find already mounted shares
+    if [ $(mount | grep -ic "$line") -ge "1" ]; then
+      MNT_SHARES[i]="$line" # Append mounted shares array
+    fi
     
     # ToDo: Regex to verify path is a UNC
   done < $1
@@ -168,6 +175,23 @@ function show_dialog()
     log "Error: Mount operation cancelled by user."
     exit 1
   fi
+}
+
+#@ DESCRIPTION: Print the mapped shares that are already monuted
+#@ REMARKS: Only finds already mounted shares in the config file share mapping
+function get_already_mounted_shares()
+{
+  fill_shares_array "$CONFIG"
+  printf "%s - %s\n" "$scriptname" "$description"
+
+  if [ ${#MNT_SHARES[@]} -le 0 ]; then
+    printf "There are no currently mounted shares:\n\n"
+    exit 0
+  fi 
+
+  printf "The following shares are already mounted:\n\n"
+  printf '%s\n' "${MNT_SHARES[@]}"
+  printf '\n'  
 }
 
 #@ DESCRIPTION: Mounts the selected windows shares
@@ -287,9 +311,11 @@ function usage()
 #@ DESCRIPTION: Print version information
 function version() 
 {                  
-  printf "%s (v%s)\n" "$scriptname" "$version"
-  printf "by %s, %d\n" "$author"  "${date_of_creation%%-*}"
-  printf "%s\n" "$copyright"
+  printf "%s: %s\n" "$scriptname" "$description"
+  printf "Release Date: %s\n" "$date_of_creation"
+  printf "Version: %s\n" "$version"  
+  #printf "by %s, %d\n" "$author"  "${date_of_creation%%-*}"
+  printf "Copyright: %s, %s\n" "$author" "$copyright"
 }
 
 # End Function definitions
@@ -310,11 +336,12 @@ if [[ -f "$PID_FILE" ]] ; then
 fi
 
 # Command-line arguments processing
-optstring=lhv
+optstring=lshv
 while getopts $optstring opt
 do
   case $opt in
   l) APPEND_LOG="false" ;;
+  s) get_already_mounted_shares; exit ;;
   h) usage; exit ;;
   v) version; exit ;;
   *) usage; exit ;;
