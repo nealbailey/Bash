@@ -58,7 +58,7 @@ copyright="Baileysoft Solutions"
 # User defined variables
 
 # Files backup source & destination
-BAK_SOURCE="/mnt/md0/"
+BAK_SOURCE="/mnt/md0"
 BAK_DEST="/mnt/seagate22tb"
 
 # Global application variables
@@ -95,13 +95,13 @@ function do_backup
   fi
 
   # Verify rysnc backup is not currently in progress
-  if [[ -f "$$BAK_SOURCE/Backup_In_Progress" ]]; then
+  if [[ -f "$BAK_SOURCE/Backup_In_Progress" ]]; then
     log "Backup process is currently running. Exiting."
     exit 106
   fi
 
   # Backup Files and Movies
-  touch "$$BAK_SOURCE/Backup_In_Progress"
+  touch "$BAK_SOURCE/Backup_In_Progress"
 
   if [[ "$CLEAN_BACKUPS" != "true" ]]; then
     eval_exec "rsync --archive -hWv --no-compress --ignore-existing --exclude-from=rsync-exclude \"$BAK_SOURCE\"/* \"$BAK_DEST\" 2>/dev/null | tee -a \"$LOGFILE\"" 
