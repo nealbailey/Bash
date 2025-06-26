@@ -215,12 +215,6 @@ if [[ $EUID -ne 0 ]]; then
    exit 100
 fi
 
-# Ensure the script is not currently in a RUNNING state.
-if [[ -f "$PID_FILE" ]] ; then
-  log "A previous instance of this process is currently executing."
-  exit 101
-fi
-
 # Command-line arguments processing
 optstring=cftlohv
 while getopts $optstring opt
@@ -237,6 +231,12 @@ do
   esac
 done
 shift "$(( $OPTIND - 1 ))"
+
+# Ensure the script is not currently in a RUNNING state.
+if [[ -f "$PID_FILE" ]] ; then
+  echo "A previous instance of this process is currently executing."
+  exit 101
+fi
 
 if [[ "$APPEND_LOG" == "false" ]]; then
   # Zero out log file
