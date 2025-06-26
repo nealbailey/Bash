@@ -48,7 +48,7 @@
 scriptname=${0##*/}
 description="Creates incremental data backups."
 usage="$scriptname [-c|-f|-t|-o|-l|-h|-v]"
-optionusage="-c:\t\t Cleanup backups (delete obsolete files)\n  -f:\t\t Full backup (all files, not just new ones)\n    -t:\t\t Test run (commands are logged but not run)\n  -l:\t\t New log file (existing log is clobbered)\n  -o:\t\t Log to console & file (default is file only)\n  -h:\t\t Print help (this screen)\n  -v:\t\t Print version info\n"
+optionusage="-c:\t\t Cleanup backups (delete obsolete files)\n  -f:\t\t Full backup (all files, not just new ones)\n  -t:\t\t Test run (commands are logged but not run)\n  -l:\t\t New log file (existing log is clobbered)\n  -o:\t\t Log to console & file (default is file only)\n  -h:\t\t Print help (this screen)\n  -v:\t\t Print version info\n"
 optionexamples=" ./"$scriptname"\n  ./"$scriptname" -tl \n\n" 
 date_of_creation="2025-06-26"
 version=1.0.5
