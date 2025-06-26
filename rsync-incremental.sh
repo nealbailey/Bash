@@ -47,10 +47,10 @@
 # Metadata
 scriptname=${0##*/}
 description="Creates incremental data backups."
-usage="$scriptname [-c|-t|-o|-l|-h|-v]"
-optionusage="-c:\t\t Cleanup backups (delete obsolete files)\n  -t:\t\t Test run (commands are logged but not run)\n  -l:\t\t New log file (existing log is clobbered)\n  -o:\t\t Log to console & file (default is file only)\n  -h:\t\t Print help (this screen)\n  -v:\t\t Print version info\n"
+usage="$scriptname [-c|-f|-t|-o|-l|-h|-v]"
+optionusage="-c:\t\t Cleanup backups (delete obsolete files)\n  -f:\t\t Full backup (all files, not just new ones)\n    -t:\t\t Test run (commands are logged but not run)\n  -l:\t\t New log file (existing log is clobbered)\n  -o:\t\t Log to console & file (default is file only)\n  -h:\t\t Print help (this screen)\n  -v:\t\t Print version info\n"
 optionexamples=" ./"$scriptname"\n  ./"$scriptname" -tl \n\n" 
-date_of_creation="2025-06-24"
+date_of_creation="2025-06-26"
 version=1.0.5
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
@@ -66,6 +66,7 @@ LOGFILE="/var/log/$scriptname.log"
 APPEND_LOG="true"
 STDOUT_LOG_ONLY="true"
 CLEAN_BACKUPS="false"
+FULL_BACKUP="false"
 TEST_RUN="false"
 PID_FILE="/tmp/$scriptname.running"
 BAK_IFS="$IFS" # Backup Internal Field Separator (IFS) 
@@ -103,11 +104,24 @@ function do_backup
   # Backup Files and Movies
   touch "$BAK_SOURCE/Backup_In_Progress"
 
-  if [[ "$CLEAN_BACKUPS" != "true" ]]; then
-    eval_exec "rsync --archive -hWv --no-compress --ignore-existing --exclude-from=rsync-exclude \"$BAK_SOURCE\"/* \"$BAK_DEST\" 2>/dev/null | tee -a \"$LOGFILE\"" 
-  else
+  # Delete files from destination that are missing from source
+  if [[ "$CLEAN_BACKUPS" == "true" ]]; then
+    log "Executing rsync workflow: Cleanup --delete from destination where missing from source."
     eval_exec "rsync --verbose --recursive --ignore-existing --ignore-non-existing --delete --exclude-from=rsync-exclude \"$BAK_SOURCE\"/* \"$BAK_DEST\" 2>/dev/null | tee -a \"$LOGFILE\""
+    return 0
   fi
+
+  # Backup all files and check for changes on source that need to be synced to destination
+  if [[ "$FULL_BACKUP" == "true" ]]; then
+    log "Executing rsync workflow: Full and complete backup --source to destination."
+    eval_exec "rsync --archive --verbose --no-compress --exclude-from=rsync-exclude \"$BAK_SOURCE\"/* \"$BAK_DEST\" 2>/dev/null | tee -a \"$LOGFILE\""
+    return 0
+  fi
+
+  # Backup only files that exist on source but not destination
+  log "Executing rsync workflow: Incremental backup --only new files"
+  eval_exec "rsync --archive --verbose --no-compress --ignore-existing --exclude-from=rsync-exclude \"$BAK_SOURCE\"/* \"$BAK_DEST\" 2>/dev/null | tee -a \"$LOGFILE\""   
+  return 0
 }
 
 #@ DESCRIPTION: Executes or suppresses commands based on test-run setting.
@@ -160,8 +174,8 @@ function log()
 #@ REMARKS: Handles the SIGTERM EXIT broadcast
 function on_exit() 
 {
-  if [[ -f "$$BAK_SOURCE/Backup_In_Progress" ]]; then
-    rm -f "$$BAK_SOURCE/Backup_In_Progress"
+  if [[ -f "$BAK_SOURCE/Backup_In_Progress" ]]; then
+    rm -f "$BAK_SOURCE/Backup_In_Progress"
   fi
   
   if [[ -f "$PID_FILE" ]] ; then
@@ -208,11 +222,12 @@ if [[ -f "$PID_FILE" ]] ; then
 fi
 
 # Command-line arguments processing
-optstring=ctlohv
+optstring=cftlohv
 while getopts $optstring opt
 do
   case $opt in
   c) CLEAN_BACKUPS="true" ;;
+  f) FULL_BACKUP="true" ;;
   t) TEST_RUN="true" ;;
   l) APPEND_LOG="false" ;;
   o) STDOUT_LOG_ONLY="false" ;;
