@@ -107,7 +107,7 @@ function do_backup
   # Delete files from destination that are missing from source
   if [[ "$CLEAN_BACKUPS" == "true" ]]; then
     log "Executing rsync workflow: Cleanup --delete from destination where missing from source."
-    eval_exec "rsync -av --delete --modify-window=1 --no-perms --no-owner --no-group --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" 2>/dev/null | tee -a \"$LOGFILE\""
+    eval_exec "rsync -av --delete --ignore-existing --modify-window=1 --no-perms --no-owner --no-group --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" 2>/dev/null | tee -a \"$LOGFILE\""
     return 0
   fi
 
