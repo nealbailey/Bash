@@ -107,20 +107,23 @@ function do_backup
   # Delete files from destination that are missing from source
   if [[ "$CLEAN_BACKUPS" == "true" ]]; then
     log "Executing rsync workflow: Cleanup --delete from destination where missing from source."
-    eval_exec "rsync --verbose --recursive --ignore-existing --ignore-non-existing --delete --exclude-from=rsync-exclude \"$BAK_SOURCE\"/* \"$BAK_DEST\" 2>/dev/null | tee -a \"$LOGFILE\""
+    eval_exec "rsync -av --delete --modify-window=1 --no-perms --no-owner --no-group --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" 2>/dev/null | tee -a \"$LOGFILE\""
     return 0
   fi
 
   # Backup all files and check for changes on source that need to be synced to destination
   if [[ "$FULL_BACKUP" == "true" ]]; then
     log "Executing rsync workflow: Full and complete backup --source to destination."
-    eval_exec "rsync --archive --verbose --no-compress --exclude-from=rsync-exclude \"$BAK_SOURCE\"/* \"$BAK_DEST\" 2>/dev/null | tee -a \"$LOGFILE\""
+    # exFat USB filesystem needs special switches 
+    eval_exec "rsync -av --delete --modify-window=1 --no-perms --no-owner --no-group --no-compress --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" | tee -a \"$LOGFILE\""
+    # original command
+    #eval_exec "rsync --archive --verbose --no-compress --exclude-from=rsync-exclude \"$BAK_SOURCE\"/ \"$BAK_DEST\"/ 2>/dev/null | tee -a \"$LOGFILE\""    
     return 0
   fi
 
   # Backup only files that exist on source but not destination
   log "Executing rsync workflow: Incremental backup --only new files"
-  eval_exec "rsync --archive --verbose --no-compress --ignore-existing --exclude-from=rsync-exclude \"$BAK_SOURCE\"/* \"$BAK_DEST\" 2>/dev/null | tee -a \"$LOGFILE\""   
+  eval_exec "rsync -av --modify-window=1 --no-perms --no-owner --no-group --no-compress --ignore-existing --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" | tee -a \"$LOGFILE\""   
   return 0
 }
 
