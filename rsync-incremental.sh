@@ -104,6 +104,9 @@ function do_backup
   # Backup Files and Movies
   touch "$BAK_SOURCE/Backup_In_Progress"
 
+  # Set working directory
+  cd "$BAK_SOURCE"
+
   # Delete files from destination that are missing from source
   if [[ "$CLEAN_BACKUPS" == "true" ]]; then
     log "Executing rsync workflow: Cleanup --delete from destination where missing from source."
