@@ -5,19 +5,22 @@
 #: Updated: 07/15/2024
 #: Purpose: Create a split VPN tunnel
 #
-#: Usage: ./kiosk.sh [-r <recipe_id>] [-s <search_term>] [-h] [-v]
+#: Usage: ./kiosk.sh [-r <recipe_id>] [-s <search_term>] [-l] [-h] [-v]
 #: Options:
 #:  -r, --recipe <recipe_id>    Print details of a specific recipe by ID
 #:  -s, --search <search_term>  Search for recipes by title
+#:  -l, --limit  <page_size>	Number of results
 #:  -h, --help                  Display this help message
 #:  -v, --version               Display version information
 #
 # Example: 
-# ./kiosk.sh -r 123		        # Print details of recipe with ID 123
-# ./kiosk.sh -s 'chocolate'     # Search for recipes with chocolate in the title
+# ./kiosk.sh -r 123		               # Print details of recipe with ID 123
+# ./kiosk.sh -s chocolate              # Search for recipes with chocolate in the title
+# ./kiosk.sh --search pie --limit 100  # Search for first 100 recipes with 'pie' in the title
 #
 # Changes:
-# V1.0   - initial release
+# V0.1.0   - initial release
+# V0.1.1   - added ability to set number of results returned
 #
 # ----------------------------------------------------------------------
 # GNU General Public License
@@ -41,10 +44,10 @@
 # Metadata
 scriptname=${0##*/}
 description="Kiosk Kiosk Recipes Client"
-optionusage="Usage: $0 [-r <recipe_id>] [-s <search_term>] [-h] [-v]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
-optionexamples="Examples:\n  $0 -r 123\t\tPrint details of recipe with ID 123\n  $0 -s 'chocolate'\tSearch for recipes containing chocolate\n"
-date_of_creation="2025-08-01"
-version=1.0.0
+optionusage="Usage: $0 [-r <recipe_id>] [-s <search_term>] [-l <page_size>] [-h] [-v]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
+optionexamples="Examples:\n  $0 -r 123\t\tPrint details of recipe with ID 123\n  $0 -s chocolate\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n"
+date_of_creation="2025-08-12"
+version=0.1.1
 author="Neal Bailey"
 copyright="Baileysoft Solutions"
 
@@ -52,6 +55,7 @@ copyright="Baileysoft Solutions"
 # Program variables
 #
 recipeApi="http://baileyfs02.baileysoft.lan:8001/api"
+pageSize=50
 recipeId=""
 recipeSearch=""
 
@@ -75,10 +79,12 @@ function version {
 #@ DESCRIPTION: Prints the most recent recipes
 #@ REMARKS: Uses the recipe API to fetch the 20 most recent recipes
 function printMostRecentRecipes {
-    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=date&pagenumber=1&sortorder=desc&pagesize=20")
+    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=date&pagenumber=1&sortorder=desc&pagesize=$pageSize")
+    echo
     echo "Most Recent Recipes:"
     echo "----------------------------------------"
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t\(.title)"' | column -ts $'\t'
+    echo
 }
 
 #@ DESCRIPTION: Prints the details of a specific recipe
@@ -99,6 +105,7 @@ function printRecipe {
     echo Instructions:
     echo 
     echo $recipeJson | jq -r '.instructions' | sed 's/<br \/>/\n/g'
+    echo
 }
 
 #@ DESCRIPTION: Searches for recipes database by title
@@ -106,8 +113,12 @@ function printRecipe {
 #@ REMARKS: Uses the recipe API to search for recipes that match the search term
 #@ OUTPUT: Prints a list of matching recipes with their IDs and titles
 function searchRecipes {
-    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&searchstring=$1&sortorder=asc&pagesize=50")
+    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&searchstring=$1&sortorder=asc&pagesize=$pageSize")
+    echo
+    echo "Recipes Containing '$1':"
+    echo "----------------------------------------"
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t\(.title)"' | column -ts $'\t'
+    echo
 }
 
 # End Function Definitions
@@ -130,6 +141,15 @@ while [[ $# -gt 0 ]]; do
                 shift 2
             else
                 echo "Usage: $0 -s <search_term>"
+                exit 1
+            fi
+            ;;
+        -l|--limit)
+            if [[ -n $2 ]]; then
+                pageSize="$2"                
+                shift 2
+            else
+                echo "Usage: $0 -l <page size>"
                 exit 1
             fi
             ;;
