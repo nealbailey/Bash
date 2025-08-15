@@ -44,8 +44,8 @@
 # Metadata
 scriptname=${0##*/}
 description="Kiosk Kiosk Recipes Client"
-optionusage="Usage: $0 [-r <recipe_id>] [-s <search_term>] [-l <page_size>] [-h] [-v]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
-optionexamples="Examples:\n  $0 -r 123\t\tPrint details of recipe with ID 123\n  $0 -s chocolate\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n"
+optionusage="Usage: $0 [-r <recipe_id>] [-s <search_term>] [-l <page_size>]  [-c <category_id>] [-h] [-v]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results\n  -c, --category <category_id>\tPrints recipes by category\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
+optionexamples="Examples:\n  $0 -r 123\t\tPrint full recipe based on ID of 123\n  $0 -s chocolate\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
 date_of_creation="2025-08-12"
 version=0.1.1
 author="Neal Bailey"
@@ -58,6 +58,7 @@ recipeApi="http://baileyfs02.baileysoft.lan:8001/api"
 pageSize=50
 recipeId=""
 recipeSearch=""
+categoryId=""
 
 # Start Function Definitions
 
@@ -76,12 +77,35 @@ function version {
     printf "Copyright: %s, %s\n" "$author" "$copyright"
 }
 
+#@ DESCRIPTION: Prints all the categories in the database
+#@ REMARKS: Uses the recipe API to fetch the categories
+function printCategories {    
+    catsJson=$(curl -s --location "$recipeApi/categories")
+    echo
+    echo "Recipe Categories:"
+    echo "----------------------------------------"
+    echo "$catsJson" | jq -r '.[] | "[\(.catId)]\t\(.category)"' | column -ts $'\t'
+    echo
+}
+
 #@ DESCRIPTION: Prints the most recent recipes
 #@ REMARKS: Uses the recipe API to fetch the 20 most recent recipes
 function printMostRecentRecipes {
     searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=date&pagenumber=1&sortorder=desc&pagesize=$pageSize")
     echo
     echo "Most Recent Recipes:"
+    echo "----------------------------------------"
+    echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title)"' | column -ts $'\t'
+    echo
+}
+
+#@ DESCRIPTION: Prints recipes by category
+#@ REMARKS: Uses the recipe API to fetch recipes in the provided category
+function printRecipesByCategory {
+    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&sortorder=asc&pagesize=$pageSize&categoryid=$categoryId")
+    categoryName=$(echo "$searchJson" | jq -r '.[0].primaryCategory.category')
+    echo
+    echo "Recipes in Category ID [$categoryId] '$categoryName':"
     echo "----------------------------------------"
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t\(.title)"' | column -ts $'\t'
     echo
@@ -117,7 +141,7 @@ function searchRecipes {
     echo
     echo "Recipes Containing '$1':"
     echo "----------------------------------------"
-    echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t\(.title)"' | column -ts $'\t'
+    echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title)"' | column -ts $'\t'
     echo
 }
 
@@ -126,6 +150,15 @@ function searchRecipes {
 # Command line argument handling
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -c|--category)
+            if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
+                categoryId="$2"
+                shift 2
+            else
+                categoryId="0"
+                shift 1
+            fi
+            ;;
         -r|--recipe)
             if [[ -n $2 && $2 =~ ^[0-9]+$ ]]; then
                 recipeId="$2"                
@@ -198,6 +231,18 @@ fi
 # User passed a search term, so search for recipes that match the search term
 if [[ -n $recipeSearch ]]; then
     searchRecipes "$recipeSearch"
+    exit 0
+fi
+
+# User passed category argument but didn't pass a category ID, print all categories
+if [[ -n $categoryId && $categoryId -eq 0 ]]; then    
+    printCategories
+    exit 0
+fi
+
+# User passed a category ID, print recipes in that category
+if [[ -n $categoryId ]]; then    
+    printRecipesByCategory
     exit 0
 fi
 
