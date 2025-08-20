@@ -1,9 +1,9 @@
 #!/bin/bash
 #: Title: kiosk.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
-#: Date: 08/01/2025
-#: Updated: 07/15/2024
-#: Purpose: Create a split VPN tunnel
+#: Created: 08/01/2025
+#: Updated: 08/20/2024
+#: Purpose: terminal client for the Kitchen-Kiosk Recipes API
 #
 #: Usage: ./kiosk.sh [-r <recipe_id>] [-s <search_term>] [-l] [-h] [-v]
 #: Options:
@@ -21,6 +21,8 @@
 # Changes:
 # V0.1.0   - initial release
 # V0.1.1   - added ability to set number of results returned
+# V0.1.2   - added ability to search for recipes by category
+# V0.1.3   - added support for spaces in search terms
 #
 # ----------------------------------------------------------------------
 # GNU General Public License
@@ -46,8 +48,8 @@ scriptname=${0##*/}
 description="Kiosk Kiosk Recipes Client"
 optionusage="Usage: $0 [-r <recipe_id>] [-s <search_term>] [-l <page_size>]  [-c <category_id>] [-h] [-v]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results\n  -c, --category <category_id>\tPrints recipes by category\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
 optionexamples="Examples:\n  $0 -r 123\t\tPrint full recipe based on ID of 123\n  $0 -s chocolate\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
-date_of_creation="2025-08-12"
-version=0.1.1
+date_of_creation="2025-08-20"
+version=0.1.3
 author="Neal Bailey"
 copyright="Baileysoft Solutions"
 
@@ -61,6 +63,22 @@ recipeSearch=""
 categoryId=""
 
 # Start Function Definitions
+
+#@ DESCRIPTION: URL encodes a string
+#@ PARAMS: $1 - the string to encode
+#@ REMARKS: This function encodes special characters in the string to make it safe for use in URLs
+#@ OUTPUT: Encoded string
+function urlencode() {
+    local LANG=C
+    local length="${#1}"
+    for (( i = 0; i < length; i++ )); do
+        local c="${1:i:1}"
+        case $c in
+            [a-zA-Z0-9.~_-]) printf "$c" ;;
+            *) printf '%%%02X' "'$c"
+        esac
+    done
+}
 
 #@ DESCRIPTION: Prints usage information
 function usage {
@@ -137,7 +155,8 @@ function printRecipe {
 #@ REMARKS: Uses the recipe API to search for recipes that match the search term
 #@ OUTPUT: Prints a list of matching recipes with their IDs and titles
 function searchRecipes {
-    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&searchstring=$1&sortorder=asc&pagesize=$pageSize")
+    encodedSearch=$(urlencode "$1")
+    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&searchstring=$encodedSearch&sortorder=asc&pagesize=$pageSize")
     echo
     echo "Recipes Containing '$1':"
     echo "----------------------------------------"
@@ -169,13 +188,19 @@ while [[ $# -gt 0 ]]; do
             fi
             ;;
         -s|--search)
-            if [[ -n $2 ]]; then
-                recipeSearch="$2"                
-                shift 2
-            else
+            # Ensure that the next argument is not an option
+            shift
+            if [[ $# -eq 0 || $1 == -* ]]; then
                 echo "Usage: $0 -s <search_term>"
                 exit 1
             fi
+            # Allow spaces in the search term
+            recipeSearch=""
+            while [[ $# -gt 0 && $1 != -* ]]; do
+                recipeSearch+="$1 "
+                shift
+            done
+            recipeSearch="${recipeSearch%" "}"  # trim trailing space
             ;;
         -l|--limit)
             if [[ -n $2 ]]; then
@@ -220,9 +245,11 @@ if ! curl -s --head --request GET "$recipeApi/recipes" | grep "200 OK" > /dev/nu
     exit 1
 fi  
 
+#
 # End Pre-requisite sanity check
+#
 
-# User passed a recipe Id, so print the recipe details
+# User passed a recipe Id, so fetch the recipe details
 if [[ -n $recipeId ]]; then
     printRecipe "$recipeId"
     exit 0
