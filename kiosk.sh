@@ -47,25 +47,24 @@
 #
 # ----------------------------------------------------------------------
 
-# Metadata
-scriptname=${0##*/}
-description="Kiosk Kiosk Recipes Client"
-optionusage="Usage: $0 [-r <recipe_id>] [-s <search_term>] [-l <page_size>] [-c <category_id>] [-i] [-h] [-v]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results\n  -c, --category <category_id>\tPrints recipes by category\n  -i, --ingredient \t\tSearches for ingredients in a recipe\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
-optionexamples="Examples:\n  $0 -r 123\t\tPrint the full recipe with the ID of 123\n  $0 -s chocolate -i\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
-date_of_creation="2025-08-20"
-version=0.1.4
-author="Neal Bailey"
-copyright="Baileysoft Solutions"
 
-#
 # Program variables
-#
 recipeApi="http://baileyfs02.baileysoft.lan:8001/api"
 pageSize=50
 recipeId=""
 recipeSearch=""
 searchType="recipe"
 categoryId=""
+
+# Metadata
+scriptname=${0##*/}
+description="Kitchen Kiosk Recipes Client"
+optionusage="Usage: $0 [options]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results, default = $pageSize\n  -c, --category <category_id>\tPrints recipes by category\n  -i, --ingredient \t\tSearches for ingredients in a recipe\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
+optionexamples="Examples:\n  $0 -r 358\t\tPrint the full recipe with the ID of 3582\n  $0 -s chocolate -i\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
+date_of_creation="2025-08-20"
+version=0.1.4
+author="Neal Bailey"
+copyright="Baileysoft Solutions"
 
 # Start Function Definitions
 
@@ -118,6 +117,7 @@ function printMostRecentRecipes {
     echo
     echo "Most Recent Recipes:"
     echo "----------------------------------------"
+    #echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title) \((if .isRecommended then "✔" else "" end))"' | column -ts $'\t'
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title)"' | column -ts $'\t'
     echo
 }
@@ -130,6 +130,7 @@ function printRecipesByCategory {
     echo
     echo "Recipes in Category ID [$categoryId] '$categoryName':"
     echo "----------------------------------------"
+    #echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t\(.title) \((if .isRecommended then "✔" else "" end))"' | column -ts $'\t'
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t\(.title)"' | column -ts $'\t'
     echo
 }
@@ -165,6 +166,7 @@ function searchRecipes {
     echo
     echo "Results - ${searchType}s containing '$1':"
     echo "----------------------------------------"
+    #echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title) \((if .isRecommended then "✔" else "" end))"' | column -ts $'\t'
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title)"' | column -ts $'\t'
     echo
 }
