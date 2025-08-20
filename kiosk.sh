@@ -2,27 +2,31 @@
 #: Title: kiosk.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Created: 08/01/2025
-#: Updated: 08/20/2024
+#: Updated: 08/20/2025
 #: Purpose: terminal client for the Kitchen-Kiosk Recipes API
 #
-#: Usage: ./kiosk.sh [-r <recipe_id>] [-s <search_term>] [-l] [-h] [-v]
+#: Usage: Usage: ./kiosk.sh [-r <recipe_id>] [-s <search_term>] [-l <page_size>] [-c <category_id>] [-i] [-h] [-v]
 #: Options:
-#:  -r, --recipe <recipe_id>    Print details of a specific recipe by ID
-#:  -s, --search <search_term>  Search for recipes by title
-#:  -l, --limit  <page_size>	Number of results
-#:  -h, --help                  Display this help message
-#:  -v, --version               Display version information
+#:  -r, --recipe <recipe_id>	 Print details of a specific recipe by ID
+#:  -s, --search <search_term>	 Search for recipes by title
+#:  -l, --limit  <page_size>	 Number of results
+#:  -c, --category <category_id> Prints recipes by category
+#:  -i, --ingredient 		     Searches for ingredients in a recipe
+#:  -h, --help			         Display this help message
+#:  -v, --version			     Display version information
 #
-# Example: 
-# ./kiosk.sh -r 123		               # Print details of recipe with ID 123
-# ./kiosk.sh -s chocolate              # Search for recipes with chocolate in the title
-# ./kiosk.sh --search pie --limit 100  # Search for first 100 recipes with 'pie' in the title
+# Examples: 
+#:  ./kiosk.sh -r 123		    Print the full recipe with the ID of 123
+#:  ./kiosk.sh -s chocolate -i	Search for recipes containing chocolate
+#:  ./kiosk.sh -s pie -l 5	    Search for first 5 recipes with pie in the title
+#:  ./kiosk.sh --category		Print all categories in the database
 #
 # Changes:
-# V0.1.0   - initial release
-# V0.1.1   - added ability to set number of results returned
-# V0.1.2   - added ability to search for recipes by category
-# V0.1.3   - added support for spaces in search terms
+#   V0.1.0   - initial release
+#   V0.1.1   - added ability to set number of results returned
+#   V0.1.2   - added ability to search for recipes by category
+#   V0.1.3   - added support for spaces in search terms
+#   V0.1.4   - added support for searching by ingredient
 #
 # ----------------------------------------------------------------------
 # GNU General Public License
@@ -46,10 +50,10 @@
 # Metadata
 scriptname=${0##*/}
 description="Kiosk Kiosk Recipes Client"
-optionusage="Usage: $0 [-r <recipe_id>] [-s <search_term>] [-l <page_size>]  [-c <category_id>] [-h] [-v]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results\n  -c, --category <category_id>\tPrints recipes by category\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
-optionexamples="Examples:\n  $0 -r 123\t\tPrint full recipe based on ID of 123\n  $0 -s chocolate\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
+optionusage="Usage: $0 [-r <recipe_id>] [-s <search_term>] [-l <page_size>] [-c <category_id>] [-i] [-h] [-v]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results\n  -c, --category <category_id>\tPrints recipes by category\n  -i, --ingredient \t\tSearches for ingredients in a recipe\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
+optionexamples="Examples:\n  $0 -r 123\t\tPrint the full recipe with the ID of 123\n  $0 -s chocolate -i\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
 date_of_creation="2025-08-20"
-version=0.1.3
+version=0.1.4
 author="Neal Bailey"
 copyright="Baileysoft Solutions"
 
@@ -60,6 +64,7 @@ recipeApi="http://baileyfs02.baileysoft.lan:8001/api"
 pageSize=50
 recipeId=""
 recipeSearch=""
+searchType="recipe"
 categoryId=""
 
 # Start Function Definitions
@@ -155,10 +160,10 @@ function printRecipe {
 #@ REMARKS: Uses the recipe API to search for recipes that match the search term
 #@ OUTPUT: Prints a list of matching recipes with their IDs and titles
 function searchRecipes {
-    encodedSearch=$(urlencode "$1")
-    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&searchstring=$encodedSearch&sortorder=asc&pagesize=$pageSize")
+    encodedSearch=$(urlencode "$1")    
+    searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&searchstring=$encodedSearch&sortorder=asc&pagesize=$pageSize&searchType=$searchType")
     echo
-    echo "Recipes Containing '$1':"
+    echo "Results - ${searchType}s containing '$1':"
     echo "----------------------------------------"
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title)"' | column -ts $'\t'
     echo
@@ -211,6 +216,8 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        -i|--ingredient)
+            searchType="ingredient"; shift 1 ;;
         -h|--help)
             usage; exit 0 ;;
         -v|--version)
