@@ -2,7 +2,7 @@
 #: Title: kiosk.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Created: 08/01/2025
-#: Updated: 08/20/2025
+#: Updated: 08/21/2025
 #: Purpose: terminal client for the Kitchen-Kiosk Recipes API
 #
 #: Usage: Usage: ./kiosk.sh [-r <recipe_id>] [-s <search_term>] [-l <page_size>] [-c <category_id>] [-i] [-h] [-v]
@@ -27,6 +27,7 @@
 #   V0.1.2   - added ability to search for recipes by category
 #   V0.1.3   - added support for spaces in search terms
 #   V0.1.4   - added support for searching by ingredient
+#   V0.1.5   - fixed bug with search by ingredient returning duplicate recipes
 #
 # ----------------------------------------------------------------------
 # GNU General Public License
@@ -61,8 +62,8 @@ scriptname=${0##*/}
 description="Kitchen Kiosk Recipes Client"
 optionusage="Usage: $0 [options]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results, default = $pageSize\n  -c, --category <category_id>\tPrints recipes by category\n  -i, --ingredient \t\tSearches for ingredients in a recipe\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
 optionexamples="Examples:\n  $0 -r 358\t\tPrint the full recipe with the ID of 3582\n  $0 -s chocolate -i\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
-date_of_creation="2025-08-20"
-version=0.1.4
+date_of_creation="2025-08-21"
+version=0.1.5
 author="Neal Bailey"
 copyright="Baileysoft Solutions"
 
@@ -114,8 +115,9 @@ function printCategories {
 #@ REMARKS: Uses the recipe API to fetch the 20 most recent recipes
 function printMostRecentRecipes {
     searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=date&pagenumber=1&sortorder=desc&pagesize=$pageSize")
+    items_count=$(echo "$searchJson" | jq '. | length')
     echo
-    echo "Most Recent Recipes:"
+    echo "$items_count Most Recent Recipes:"
     echo "----------------------------------------"
     #echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title) \((if .isRecommended then "✔" else "" end))"' | column -ts $'\t'
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title)"' | column -ts $'\t'
@@ -127,8 +129,9 @@ function printMostRecentRecipes {
 function printRecipesByCategory {
     searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&sortorder=asc&pagesize=$pageSize&categoryid=$categoryId")
     categoryName=$(echo "$searchJson" | jq -r '.[0].primaryCategory.category')
+    items_count=$(echo "$searchJson" | jq '. | length')
     echo
-    echo "Recipes in Category ID [$categoryId] '$categoryName':"
+    echo "$items_count Recipes Returned - Category ID [$categoryId] '$categoryName':"
     echo "----------------------------------------"
     #echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t\(.title) \((if .isRecommended then "✔" else "" end))"' | column -ts $'\t'
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t\(.title)"' | column -ts $'\t'
@@ -163,8 +166,9 @@ function printRecipe {
 function searchRecipes {
     encodedSearch=$(urlencode "$1")    
     searchJson=$(curl -s --location "$recipeApi/recipes?sortcolumn=title&pagenumber=1&searchstring=$encodedSearch&sortorder=asc&pagesize=$pageSize&searchType=$searchType")
+    items_count=$(echo "$searchJson" | jq '. | length')
     echo
-    echo "Results - ${searchType}s containing '$1':"
+    echo "$items_count Results Returned - ${searchType}s containing '$1':"
     echo "----------------------------------------"
     #echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title) \((if .isRecommended then "✔" else "" end))"' | column -ts $'\t'
     echo "$searchJson" | jq -r '.[] | "[\(.recId)]\t[\(.primaryCategory.category)]\t\(.title)"' | column -ts $'\t'
