@@ -60,8 +60,8 @@ categoryId=""
 # Metadata
 scriptname=${0##*/}
 description="Kitchen Kiosk Recipes Client"
-optionusage="Usage: $0 [options]\n\n Options:\n  -r, --recipe <recipe_id>\tPrint details of a specific recipe by ID\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results, default = $pageSize\n  -c, --category <category_id>\tPrints recipes by category\n  -i, --ingredient \t\tSearches for ingredients in a recipe\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
-optionexamples="Examples:\n  $0 -r 358\t\tPrint the full recipe with the ID of 3582\n  $0 -s chocolate -i\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
+optionusage="Usage: $0 [options]\n\n Options:\n  -r, --recipe <recipe_id>\tPrints a full recipe card by its Id\n  -s, --search <search_term>\tSearch for recipes by title\n  -l, --limit  <page_size>\tNumber of results, default = $pageSize\n  -c, --category <category_id>\tPrints recipes in a category\n  -i, --ingredient \t\tSearches for recipes by ingredient\n  -h, --help\t\t\tDisplay this help message\n  -v, --version\t\t\tDisplay version information"
+optionexamples="Examples:\n  $0 -r 358\t\tPrint the full recipe with the ID of 358\n  $0 -s chocolate -i\tSearch for recipes containing chocolate\n  $0 -s pie -l 5\tSearch for first 5 recipes with pie in the title\n  $0 --category\t\tPrint all categories in the database\n"
 date_of_creation="2025-08-21"
 version=0.1.5
 author="Neal Bailey"
