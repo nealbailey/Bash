@@ -3,7 +3,8 @@
 #: Author: Neal T. Bailey <neal.bailey@hp.com>
 #: Date: 07/10/2015
 #: Updated: 02/28/2019 - new Seagate HDD volume
-#: Updated: 06/24/2025 - new Seagate (22TB) HDD volume
+#: Updated: 06/24/2025 - new Seagate (22TB) HDD 
+#: Updated: 07/07/2026 - added check to ensure backup volume is mounted
 #: Purpose: Data backup management
 #
 #: Usage: ./rsync-incremental [options]
@@ -24,6 +25,7 @@
 # V1.0.3 - moved TV Shows-Kids to alternate backup volume
 # V1.0.4 - cleaned up code so there is only 2 backup tasks; Files and Videos
 # V1.0.5 - cleaned up code so that there is only 1 backup task: full server
+# V1.0.6 - added check to ensure backup volume is mounted before proceeding with backup tasks
 #
 # ----------------------------------------------------------------------
 # GNU General Public License
@@ -50,8 +52,8 @@ description="Creates incremental data backups."
 usage="$scriptname [-c|-f|-t|-o|-l|-h|-v]"
 optionusage="-c:\t\t Cleanup backups (delete obsolete files)\n  -f:\t\t Full backup (all files, not just new ones)\n  -t:\t\t Test run (commands are logged but not run)\n  -l:\t\t New log file (existing log is clobbered)\n  -o:\t\t Log to console & file (default is file only)\n  -h:\t\t Print help (this screen)\n  -v:\t\t Print version info\n"
 optionexamples=" ./"$scriptname"\n  ./"$scriptname" -tl \n\n" 
-date_of_creation="2025-06-26"
-version=1.0.5
+date_of_creation="2026-07-07"
+version=1.0.6
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 
@@ -89,16 +91,24 @@ function do_backup
     exit 104
   fi
 
+  # Ensure the backup volume is mounted and accessible. 
+  # If the backup volume is not mounted then we cannot continue.
+  if [ $(findmnt "$BAK_DEST" | wc -l) -eq 0 ] ; then
+    STDOUT_LOG_ONLY="false"
+    log "$BAK_DEST is not mounted. Please mount the backup volume and try again."
+    exit 105
+  fi
+
   # Verify exclusions file
   if [ ! -f "$BAK_SOURCE/rsync-exclude" ]; then
     log "Exclusions file does not exist: \"$BAK_SOURCE/rsync-exclude\""
-    exit 105
+    exit 106
   fi
 
   # Verify rysnc backup is not currently in progress
   if [[ -f "$BAK_SOURCE/Backup_In_Progress" ]]; then
     log "Backup process is currently running. Exiting."
-    exit 106
+    exit 107
   fi
 
   # Backup Files and Movies
