@@ -2,7 +2,7 @@
 #: Title: nordvpn.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Date: 07/10/2015
-#: Updated: 07/15/2024
+#: Updated: 08/10/2026
 #: Purpose: Create a split VPN tunnel
 #
 #: Usage: ./nordvpn.sh [options]
@@ -23,6 +23,7 @@
 # V2.3   - added feature to close tunnel without having to restart the server
 # V2.4   - added feature to reset firewall rules when closing tunnel
 # V2.5   - configureSplitTunnel shouldn't start transmission if IP did not change after creating tunnel
+# V2.6   - added getVpnIp function to get the VPN server IP address from the ovpn config file
 #
 # Installation:
 # For ease of use, create an alias in ~/.bash_alias:
@@ -52,10 +53,11 @@
 # ----------------------------------------------------------------------
 
 # NordVPN working Directory
-VPN_CWD="/etc/openvpn"                   
+VPN_CWD="/etc/openvpn"
+# NordVPN server host name
+NORDVPN_HOST="ca1066"
 # NordVPN config file 
-#NORDVPN_CONF="$VPN_CWD/ovpn_tcp/ca1681.nordvpn.com.tcp.ovpn"
-NORDVPN_CONF="$VPN_CWD/ovpn_tcp/ca1066.nordvpn.com.tcp.ovpn"
+NORDVPN_CONF="$VPN_CWD/ovpn_tcp/$NORDVPN_HOST.nordvpn.com.tcp.ovpn"
 # NordVPN credentials file
 NORDVPN_CRED="$VPN_CWD/login_nord.txt"
 # NordVPN ovn command 
@@ -75,8 +77,8 @@ description="Establishes a split-tunnel VPN connection."
 usage="$scriptname [-d|-s|-t|-l|-o|-h|-v]"
 optionusage="-d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
 optionexamples=" ./"$scriptname"\n  ./"$scriptname" -so \n\n" 
-date_of_creation="2024-07-15"
-version=2.5.0
+date_of_creation="2026-08-10"
+version=2.6.0
 author="Neal T. Bailey"
 copyright="Copyright, Baileysoft Solutions"
 
@@ -129,7 +131,8 @@ function configureSplitTunnel
 function EstablishVpnTunnel()
 { 
   cd $VPN_CWD
-  log "Establishing OpenVPN tunnel."
+  local ip="$(getVpnIp $NORDVPN_HOST)"
+  log "Establishing OpenVPN tunnel - Host: $NORDVPN_HOST, IP: $ip"
   log "$VPN_CMD 2>&1 &"
   $VPN_CMD 2>&1 >> "$LOGFILE" &
   
@@ -170,6 +173,14 @@ function destroyVpnTunnel()
   log "Current internet ip: $(dig +short myip.opendns.com @resolver1.opendns.com)"
 
   return 0
+}
+
+#@ DESCRIPTION: Gets the VPN server IP address from the ovpn config file.
+#@ PARAM $1: The NordVPN server name (e.g., ca1066)
+#@ RETURNS: The VPN server IP address.
+function getVpnIp() {
+    local ip=$(cat "$VPN_CWD/ovpn_tcp/$1.nordvpn.com.tcp.ovpn" | grep -i "remote " | cut -d ' ' -f2 | head -n 1)
+    echo "$ip"
 }
 
 #@ DESCRIPTION: Executes or suppresses commands based on test-run setting.
@@ -269,7 +280,7 @@ if [ $(which openvpn | grep -c "openvpn") -eq 0 ] ; then
   STDOUT_LOG_ONLY="false"
   log "OpenVPN is not installed on this device."
   log "https://support.nordvpn.com/Connectivity/Linux/1047409422/How-can-I-connect-to-NordVPN-using-Linux-Terminal.htm"
-  exit 102
+  exit 101
 fi
 
 # Check if transmission-daemon is installed
@@ -288,7 +299,7 @@ fi
 if [ $(ifconfig | grep -ic tun0) -ne 0 ] ; then
   STDOUT_LOG_ONLY="false"
   log "A tunnel is already established on iface tun0."
-  exit 101
+  exit 102
 fi
 
 # Check for test-run action - write log preamble
@@ -303,7 +314,7 @@ if [ "$CREATE_TUNNEL" == "true" ]; then
   if [[ ! -f "$NORDVPN_CONF" ]] ; then
     STDOUT_LOG_ONLY="false"
     log "Could not find the NordVPN configuration file necessary to open a connection."
-    log "https://nordvpn.com/ovpn/"
+    log "Not Found: $NORDVPN_CONF"
     exit 103
   fi
 
