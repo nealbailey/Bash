@@ -47,8 +47,8 @@ DISABLED="false"		   # Killswitch terminate flag
 APPEND_LOG="true"      # Append to existing log file
 STDOUT_LOG_ONLY="true" # Send messages to terminal and log file
 TEST_RUN="false"       # Simulate tasks but do not execute them
-# This value must come from *.ovpn file (e.g. /etc/openvpn/ovpn_tcp/ca1783.nordvpn.com.tcp.ovpn)
-TUNNEL="93.114.61.175 port 443 proto tcp"   #ca1783.nordvpn.com.tcp.ovpn
+# This value must come from *.ovpn file (e.g. /etc/openvpn/ovpn_tcp/ca1066.nordvpn.com.tcp.ovpn)
+TUNNEL="86.106.90.243 port 443 proto tcp"   #ca1783.nordvpn.com.tcp.ovpn
 
 # Metadata
 scriptname=${0##*/}

@@ -55,7 +55,7 @@
 VPN_CWD="/etc/openvpn"                   
 # NordVPN config file 
 #NORDVPN_CONF="$VPN_CWD/ovpn_tcp/ca1681.nordvpn.com.tcp.ovpn"
-NORDVPN_CONF="$VPN_CWD/ovpn_tcp/ca1783.nordvpn.com.tcp.ovpn"
+NORDVPN_CONF="$VPN_CWD/ovpn_tcp/ca1066.nordvpn.com.tcp.ovpn"
 # NordVPN credentials file
 NORDVPN_CRED="$VPN_CWD/login_nord.txt"
 # NordVPN ovn command 
