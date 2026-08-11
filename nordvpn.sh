@@ -133,7 +133,7 @@ function EstablishVpnTunnel()
   cd $VPN_CWD
   local ip="$(getVpnIp $NORDVPN_HOST)"
   log "Establishing OpenVPN tunnel - Host: $NORDVPN_HOST, IP: $ip"
-  log "$VPN_CMD 2>&1 &"
+  log "Exec: $VPN_CMD 2>&1 &"
   $VPN_CMD 2>&1 >> "$LOGFILE" &
   
   if [ $? -ne 0 ]; then
