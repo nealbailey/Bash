@@ -158,7 +158,7 @@ function show_dialog()
 {
   fill_dialog_columns 
 
-  SELECTED_ITEMS=$(zenity --list --checklist --width="500" --height="300" \
+  SELECTED_ITEMS=$(zenity --list --checklist --width="800" --height="600" \
     --title="Baileysoft Solutions - Samba Share Manager"  \
     --text="Select the samba share(s) to mount" \
     --column="Mark" --column="Remote Share" \
