@@ -151,14 +151,13 @@ if ! command -v zotify &> /dev/null; then
     exit 101
 fi
 
-# Verify correct python version is in use
-if [ $(python3 --version | grep 3.11 | wc -l) -eq 0 ]; then
-  python_changed=true
-  log "Error: This script requires Python version 3.11 to run zotify properly." 
+# Verify correct Python version is in use
+if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then  
+  log "Error: This script requires Python version 3.11 or newer to run zotify properly."
   log "INFO: If installed, you can set it as the default version using this command:"
   log "'sudo update-alternatives --config python3' or 'sudo ln -sf /usr/bin/python3.11 /usr/bin/python3'"
   exit 102
-fi 
+fi
 
 # Ensure the spotify auth_token exists. If missing zotify will not be able to log in.
 # The credentials.json file is required for zotify to authenticate with the Spotify API.
@@ -175,16 +174,3 @@ StageDownloadedRips
 LaunchNTag
 CopyRipsToServer
 
-# Old version of Ubuntu uses python 3.10 but zotify requires 3.11 but changing the python version
-# and not restoring the original version breaks the terminal. 
-# So we are reminding the user to change it back if we had to change it to run zotify.
-if [ $(python3 --version | grep 3.11 | wc -l) -eq 1 ]; then
-  python_changed=true  
-fi
-
-# Remind user to change python version back if we had to change it to run zotify.
-if [ "$python_changed" = true ]; then
-  log "INFO: Python version was changed to run zotify."
-  log "INFO: You must restore the previous version or your terminal will not function correctly."
-  log "'sudo update-alternatives --config python3'"
-fi
