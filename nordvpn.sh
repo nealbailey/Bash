@@ -100,7 +100,7 @@ function configureSplitTunnel
   # Stop the transmission daemon  
   if [[ $TORRENT_SERVICE_INSTALLED = "true" ]]; then
     log "Stopping service $TORRENT_SERVICE."
-    eval_exec "service $TORRENT_SERVICE stop 2>&1"
+    eval_exec "service $TORRENT_SERVICE stop 2>&1 | tee -a \"$LOGFILE\""
   fi
 
   EstablishVpnTunnel
@@ -120,7 +120,7 @@ function configureSplitTunnel
   if [[ $TORRENT_SERVICE_INSTALLED = "true" ]]; then
     sleep 3
     log "Starting service $TORRENT_SERVICE"
-    eval_exec "service $TORRENT_SERVICE start 2>&1"
+    eval_exec "service $TORRENT_SERVICE start 2>&1 | tee -a \"$LOGFILE\""
   fi  
   
   return 0
@@ -158,15 +158,15 @@ function destroyVpnTunnel()
   # Stop the transmission daemon  
   if [[ $TORRENT_SERVICE_INSTALLED = "true" ]]; then
     log "Stopping service $TORRENT_SERVICE."
-    eval_exec "service $TORRENT_SERVICE stop 2>&1"
+    eval_exec "service $TORRENT_SERVICE stop 2>&1 | tee -a \"$LOGFILE\""
   fi
 
   log "Killing ovpn pid $pid."
-  eval_exec "kill $pid 2>&1"
-  
+  eval_exec "kill $pid 2>&1 | tee -a \"$LOGFILE\""
+
   # Reset firewall settings (killswitch)
   log "Disable killswitch firewall configration"
-  eval_exec "ufw --force reset 2>&1"
+  eval_exec "ufw --force reset 2>&1 | tee -a \"$LOGFILE\""
 
   # Wait for the background ovpn tunnel to close
   sleep 5
