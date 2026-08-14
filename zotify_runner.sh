@@ -4,11 +4,12 @@
 #: Author: Neal T. Bailey <nealbailey@hotmail.com>
 #:
 #: Changes: 
-#:  11/19/2025: V0.1 - Initial release
+#:  11/19/2022: V0.1.0 - Initial release
+#:  08/14/2026: V0.2.0 - Added test-run option and improved logging
 #:
 #: Usage: $ ./zotify_runner.sh
 #: Depends: requires package(s)
-#:   zotify: https://github.com/DraftKinner/zotify.git
+#:   zotify: https://github.com/Googolplexed0/zotify
 #:   NTag flatpak: https://flathub.org/apps/com.github.nrittsti.NTag
 #:
 # ----------------------------------------------------------------------
@@ -23,12 +24,39 @@
 #
 # https://www.gnu.org/licenses/gpl-2.0.html
 #-----------------------------------------------------------------------
-# Copyright (c) 2014-2024 Baileysoft Solutions
+# Copyright (c) 2016-2026 Baileysoft Solutions
 #-----------------------------------------------------------------------
 
+# Sets the script to exit immediately if a command exits with a non-zero status,
+# treat unset variables as an error and exit immediately, and prevents errors in a pipeline from being masked.
+set -euo pipefail
+
+# Program Variables
 new_file_count=0
+# Mouted network file share path to copy mp3s to
 file_share="/home/nealosis/Network/baileyfs02.baileysoft.lan/Files/Uploads/Music"
-python_changed=false
+# The path where zotify will download music files to. This is the default path for zotify.
+zotify_dl_path="/home/nealosis/Music/Zotify Music"
+# The path where zotify will stage music files to so their ID3 Tags can be edited before copying to the network file share.
+stage_path="/home/nealosis/Music/New"
+# Flag to determine if the script is running in simulation mode (test-run)
+isSimulation=false
+
+# Metadata
+scriptname=${0##*/}
+description="Spotify Ripper and ID3Tag Editor"
+optionusage="Usage: $0 [options]\n\n Options:\n  -t, --test-run\tSimulate workflow without calling Spotify or copying files\n  -h, --help\t\tDisplay this help message\n  -v, --version\t\tDisplay version information"
+optionexamples="Examples:\n  $0 -t\t\tSimulate the workflow\n"
+date_of_creation="2026-08-14"
+version=0.2.0
+author="Neal T. Bailey"
+copyright="Baileysoft Solutions"
+
+# Log file path
+LOGFILE="/tmp/$scriptname.log"
+
+# Block eval_exec from executing commands when TEST_RUN is set to true.
+TEST_RUN=false  
 
 #@ DESCRIPTION: Executes or suppresses commands based on test-run setting.
 #@ PARAM $1: The command to execute.
@@ -50,44 +78,64 @@ function eval_exec
   return $result
 }
 
+#@ DESCRIPTION: Prints usage information
+function usage {
+    printf "%s - %s\n" "$scriptname" "$description"
+    printf "%s\n $optionusage"
+    printf "%s\n\n $optionexamples"
+}
+
+#@ DESCRIPTION: Print version information
+function version {
+    printf "%s: %s\n" "$scriptname" "$description"
+    printf "Release Date: %s\n" "$date_of_creation"
+    printf "Version: %s\n" "$version"
+    printf "Copyright: %s, %s\n" "$author" "$copyright"
+}
+
 #@ DESCRIPTION: Log message.
 #@ PARAM $1: The message to log.
 #@ REMARKS: Sends message to stdout with -o flag
 function log   
 {
-  echo $(date +%Y-%m-%dT%H:%M) "$1" # >> "$LOGFILE"
-}
-
-#@ DESCRIPTION: Launch OnTheSpot spotify ripping tool.
-function LaunchOnTheSpotRipper
-{
-  local appFolder="/home/nealosis/Applications"
-  local appImg="OnTheSpot-x86_64.AppImage"
-  if [[ ! -f "$appFolder/$appImg" ]] ; then    
-    log "Could not find OnTheSpot AppImage: '$appFolder/$appImg'"
-    log "https://github.com/casualsnek/onthespot"
-    exit 101
-  fi
-
-  log "Launching Spotify Ripping Tool"
-  cd "$appFolder" && ./$appImg
+  echo "$1"  
+  echo $(date +%Y-%m-%dT%H:%M) "$1" >> "$LOGFILE"
 }
 
 #@ DESCRIPTION: Prompt user for spotify URLs to download using zotify.
 function PromptForSpotifyUrls
 {
   while true; do
-    read -p "Paste the full Spotify URL to download: " url
-    log "Downloading from URL: $url"
-    zotify "$url" --audio-format=mp3 --download-quality=very_high
+    read -p "Paste the full Spotify URL to download: " url    
+    ExecuteZotifyDownload "$url"
 
     # Ask if the user wants to download another URL
     read -p "Download another spotify link? (y/n): " answer
     if [[ "$answer" =~ ^[nN]$ ]]; then
-      log "zotify downloads completed."
+      log "Zotify download sequence completed."
       break
     fi
   done
+}
+
+#@ DESCRIPTION: Executes zotify to download music from Spotify.
+#@ PARAM $1: The Spotify URL (track, playlist, album, etc.) to download.
+function ExecuteZotifyDownload
+{
+  if [[ $isSimulation == true ]]; then
+    log "Simulation mode enabled - skipping Spotify actions."
+    return 0
+  fi
+
+  if [[ -z "$1" ]]; then
+    log "No Spotify URL provided. Skipping download."
+    return 1
+  fi
+
+  log "Downloading from URL: $1"
+  log "Exec: zotify \"$1\" --codec=mp3 --download-quality=very_high 2>&1"  
+  #eval_exec "zotify \"$1\" --codec=mp3 --download-quality=very_high 2>&1  | tee -a \"$LOGFILE\""
+  zotify "$1" --codec=mp3 --download-quality=very_high 2>&1
 }
 
 #@ DESCRIPTION: Launch ntag package to update file ID3Tags.
@@ -103,7 +151,7 @@ function LaunchNTag
     # Launch NTag
     log "Launching ntag: com.github.nrittsti.NTag"
     log "Don't forget to rename in ntag before editing the ID3Tags data."
-    eval_exec "flatpak run com.github.nrittsti.NTag"
+    eval_exec "flatpak run com.github.nrittsti.NTag 2>&1 | tee -a \"$LOGFILE\""
   else
     log "INFO: No files were staged so no need to continue. Exiting."
     exit 1
@@ -115,31 +163,49 @@ function StageDownloadedRips
 {
   # Delete everything in New staging folder
   log "Delete everything in the New staging folder"
-  eval_exec "rm -frv ~/Music/New/* 2>&1"
-  eval_exec "cd /home/nealosis/Music"
+  eval_exec "rm -frv $stage_path/* 2>&1 | tee -a \"$LOGFILE\""
+  eval_exec "cd $stage_path 2>&1 | tee -a \"$LOGFILE\""
 
   # Copy any music files created in the previous 24 hours into New folder
   log "Copying new zotify music downloads into staging folder"
   #local find_count=$(find ./Zotify\ Albums/ \( -name '*.mp3' \) -mtime -1 | wc -l)
-  local find_count=$(find ./Zotify\ Playlists/ \( -name '*.mp3' \) -mtime -1 | wc -l)
+  local find_count=$(find "$zotify_dl_path" \( -name '*.mp3' \) -mtime -1 | wc -l)
   log "Found '$find_count' new music files to stage"
 
   if [ "$find_count" -gt 0 ]; then
-    eval_exec "find ./Zotify\ Playlists \( -name '*.mp3' \) -mtime -1  -exec cp -uv {} ~/Music/New \; 2>&1"
+    eval_exec "find \"$zotify_dl_path\" \( -name '*.mp3' \) -mtime -1  -exec cp -uv {} $stage_path \; 2>&1 | tee -a \"$LOGFILE\""
   fi
   new_file_count="$find_count"
 }
 
 # #@ DESCRIPTION: Copies rips from temp staging path to network file share.
 function CopyRipsToServer
-{
+{ 
   # Ensure the server directory exists
   if [ ! -d "$file_share" ]; then
     log "The server directory \"$file_share\" does not exist. Is it mounted?"
     return 1
   fi
-  eval_exec "cp -uv ~/Music/New/* $file_share"  
+  log "Copying new music files to server share: $file_share"
+  
+  if [[ $isSimulation == true ]]; then
+    log "Simulation mode enabled - skipping copying files to server."
+    return 0
+  fi
+
+  eval_exec "cp -uv $stage_path/* $file_share 2>&1 | tee -a \"$LOGFILE\""  
 }
+
+# Zero out log file
+cat /dev/null > "$LOGFILE"
+
+# Start the application trace log
+if [[ ! -e "$LOGFILE" ]] ; then
+  touch "$LOGFILE"
+fi 
+
+# Set permissions on the log file to ensure it is readable and writable
+chmod 755 "$LOGFILE" && log "Started executing script tasks."
 
 #
 # Pre-requisite sanity check. These segments ensure nothing unexpected will prevent
@@ -161,16 +227,43 @@ fi
 
 # Ensure the spotify auth_token exists. If missing zotify will not be able to log in.
 # The credentials.json file is required for zotify to authenticate with the Spotify API.
+#
 # If the token expires, delete the credentials.json file and re-run the zotify command to generate a new token json file.
+# When the token is bad you usually get a 'MercuryException: status: 403' error message from zotify.
 if [ $(find ~/.config -iname credentials.json 2>/dev/null | wc -l) -eq 0 ]; then
   log "Error: zotify credentials.json file not found in ~/.config!"
   log "Please create the file with your Spotify API credentials." 
   exit 103
 fi 
 
-#LaunchOnTheSpotRipper
-PromptForSpotifyUrls
-StageDownloadedRips
-LaunchNTag
-CopyRipsToServer
+# Command line argument handling
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -t|--test-run)
+            isSimulation=true; shift 1 ;;
+        -h|--help)
+            usage; exit 0 ;;
+        -v|--version)
+            version; exit 0 ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
 
+#
+# Execute the main script functions
+#
+
+# Prompt user for Spotify URLs to download
+PromptForSpotifyUrls
+
+# Stage the downloaded rips for ID3Tag editing
+StageDownloadedRips
+
+# Launch NTag to edit ID3Tags of the staged files
+LaunchNTag
+
+# Copy the rips to the network file share
+CopyRipsToServer
