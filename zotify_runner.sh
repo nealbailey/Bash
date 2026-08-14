@@ -34,11 +34,11 @@ set -euo pipefail
 # Program Variables
 new_file_count=0
 # Mouted network file share path to copy mp3s to
-file_share="/home/nealosis/Network/baileyfs02.baileysoft.lan/Files/Uploads/Music"
+file_share="$HOME/Network/baileyfs02.baileysoft.lan/Files/Uploads/Music"
 # The path where zotify will download music files to. This is the default path for zotify.
-zotify_dl_path="/home/nealosis/Music/Zotify Music"
+zotify_dl_path="$HOME/Music/Zotify Music"
 # The path where zotify will stage music files to so their ID3 Tags can be edited before copying to the network file share.
-stage_path="/home/nealosis/Music/New"
+stage_path="$HOME/Music/New"
 # Flag to determine if the script is running in simulation mode (test-run)
 isSimulation=false
 
@@ -96,10 +96,11 @@ function version {
 #@ DESCRIPTION: Log message.
 #@ PARAM $1: The message to log.
 #@ REMARKS: Sends message to stdout with -o flag
-function log   
-{
-  echo "$1"  
-  echo $(date +%Y-%m-%dT%H:%M) "$1" >> "$LOGFILE"
+log() {  
+  local timestamp
+  timestamp=$(date '+%Y-%m-%dT%H:%M:%S')
+  printf '%s\n' "$1"
+  printf '%s %s\n' "$timestamp" "$1" >> "$LOGFILE"
 }
 
 #@ DESCRIPTION: Prompt user for spotify URLs to download using zotify.
@@ -111,10 +112,11 @@ function PromptForSpotifyUrls
 
     # Ask if the user wants to download another URL
     read -p "Download another spotify link? (y/n): " answer
-    if [[ "$answer" =~ ^[nN]$ ]]; then
-      log "Zotify download sequence completed."
-      break
-    fi
+    case "$answer" in
+      [nN]) break ;;
+      [yY]) ;;
+      *) log "Please answer y or n."; continue ;;
+  esac
   done
 }
 
@@ -143,7 +145,7 @@ function LaunchNTag
 {
   if [[ $new_file_count -gt 0 ]]; then
     # Verify ntag is installed
-    if [ $(flatpak list --columns=name,application | grep -ic com.github.nrittsti.NTag) -eq 0 ] ; then
+    if ! flatpak info com.github.nrittsti.NTag &>/dev/null; then
       log "Ntag flatpak not installed: com.github.nrittsti.NTag"
       log "https://flathub.org/apps/com.github.nrittsti.NTag"
       exit 100
@@ -161,19 +163,26 @@ function LaunchNTag
 #@ DESCRIPTION: Copies rips from download path to temp staging path.
 function StageDownloadedRips
 {
-  # Delete everything in New staging folder
-  log "Delete everything in the New staging folder"
-  eval_exec "rm -frv $stage_path/* 2>&1 | tee -a \"$LOGFILE\""
-  eval_exec "cd $stage_path 2>&1 | tee -a \"$LOGFILE\""
+  # Verify the stage path exists before attempting to copy files into it.  
+  [[ -d "$stage_path" ]] || {
+    log "Error: Staging directory does not exist: $stage_path"
+    return 1
+  }
 
+  # Delete mp3 files in New staging folder
+  log "Delete previous staged mp3 files in the New staging folder"
+  eval_exec "rm -frv \"$stage_path\"/*.mp3 2>&1 | tee -a \"$LOGFILE\""
+  #eval_exec "find \"$stage_path\" -mindepth 1 -maxdepth 1 -iname \".mp3\" -exec rm -rfv -- {} + 2>&1 | tee -a \"$LOGFILE\""
+  
   # Copy any music files created in the previous 24 hours into New folder
   log "Copying new zotify music downloads into staging folder"
+  
   #local find_count=$(find ./Zotify\ Albums/ \( -name '*.mp3' \) -mtime -1 | wc -l)
   local find_count=$(find "$zotify_dl_path" \( -name '*.mp3' \) -mtime -1 | wc -l)
   log "Found '$find_count' new music files to stage"
 
   if [ "$find_count" -gt 0 ]; then
-    eval_exec "find \"$zotify_dl_path\" \( -name '*.mp3' \) -mtime -1  -exec cp -uv {} $stage_path \; 2>&1 | tee -a \"$LOGFILE\""
+    eval_exec "find \"$zotify_dl_path\" \( -name '*.mp3' \) -mtime -1  -exec cp -uv {} \"$stage_path\" \; 2>&1 | tee -a \"$LOGFILE\""
   fi
   new_file_count="$find_count"
 }
@@ -193,19 +202,13 @@ function CopyRipsToServer
     return 0
   fi
 
-  eval_exec "cp -uv $stage_path/* $file_share 2>&1 | tee -a \"$LOGFILE\""  
+  eval_exec "cp -uv \"$stage_path\"/*.mp3 \"$file_share\" 2>&1 | tee -a \"$LOGFILE\""  
 }
 
-# Zero out log file
-cat /dev/null > "$LOGFILE"
-
-# Start the application trace log
-if [[ ! -e "$LOGFILE" ]] ; then
-  touch "$LOGFILE"
-fi 
-
-# Set permissions on the log file to ensure it is readable and writable
-chmod 755 "$LOGFILE" && log "Started executing script tasks."
+# Create the log file and set permissions to be readable and writable by the user only.
+touch "$LOGFILE"
+chmod 600 "$LOGFILE"
+: > "$LOGFILE"
 
 #
 # Pre-requisite sanity check. These segments ensure nothing unexpected will prevent
@@ -230,11 +233,12 @@ fi
 #
 # If the token expires, delete the credentials.json file and re-run the zotify command to generate a new token json file.
 # When the token is bad you usually get a 'MercuryException: status: 403' error message from zotify.
-if [ $(find ~/.config -iname credentials.json 2>/dev/null | wc -l) -eq 0 ]; then
+credentials_file="$HOME/.config/zotify/credentials.json"
+if [[ ! -f "$credentials_file" ]]; then
   log "Error: zotify credentials.json file not found in ~/.config!"
   log "Please create the file with your Spotify API credentials." 
   exit 103
-fi 
+fi
 
 # Command line argument handling
 while [[ $# -gt 0 ]]; do
