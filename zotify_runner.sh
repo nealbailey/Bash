@@ -96,7 +96,7 @@ function version {
 #@ DESCRIPTION: Log message.
 #@ PARAM $1: The message to log.
 #@ REMARKS: Sends message to stdout with -o flag
-log() {  
+function log() {  
   local timestamp
   timestamp=$(date '+%Y-%m-%dT%H:%M:%S')
   printf '%s\n' "$1"
