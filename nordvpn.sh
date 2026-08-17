@@ -2,7 +2,7 @@
 #: Title: nordvpn.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Date: 07/10/2015
-#: Updated: 08/10/2026
+#: Updated: 08/17/2026
 #: Purpose: Create a split VPN tunnel
 #
 #: Usage: ./nordvpn.sh [options]
@@ -24,6 +24,7 @@
 # V2.4   - added feature to reset firewall rules when closing tunnel
 # V2.5   - configureSplitTunnel shouldn't start transmission if IP did not change after creating tunnel
 # V2.6   - added getVpnIp function to get the VPN server IP address from the ovpn config file
+# V2.7   - cleaned up eval_exec function
 #
 # Installation:
 # For ease of use, create an alias in ~/.bash_alias:
@@ -77,8 +78,8 @@ description="Establishes a split-tunnel VPN connection."
 usage="$scriptname [-d|-s|-t|-l|-o|-h|-v]"
 optionusage="-d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
 optionexamples=" ./"$scriptname"\n  ./"$scriptname" -so \n\n" 
-date_of_creation="2026-08-10"
-version=2.6.0
+date_of_creation="2026-08-17"
+version=2.7.0
 author="Neal T. Bailey"
 copyright="Copyright, Baileysoft Solutions"
 
@@ -100,7 +101,7 @@ function configureSplitTunnel
   # Stop the transmission daemon  
   if [[ $TORRENT_SERVICE_INSTALLED = "true" ]]; then
     log "Stopping service $TORRENT_SERVICE."
-    eval_exec "service $TORRENT_SERVICE stop 2>&1 | tee -a \"$LOGFILE\""
+    eval_exec "service \"$TORRENT_SERVICE\" stop"
   fi
 
   EstablishVpnTunnel
@@ -120,7 +121,7 @@ function configureSplitTunnel
   if [[ $TORRENT_SERVICE_INSTALLED = "true" ]]; then
     sleep 3
     log "Starting service $TORRENT_SERVICE"
-    eval_exec "service $TORRENT_SERVICE start 2>&1 | tee -a \"$LOGFILE\""
+    eval_exec "service \"$TORRENT_SERVICE\" start"
   fi  
   
   return 0
@@ -158,15 +159,15 @@ function destroyVpnTunnel()
   # Stop the transmission daemon  
   if [[ $TORRENT_SERVICE_INSTALLED = "true" ]]; then
     log "Stopping service $TORRENT_SERVICE."
-    eval_exec "service $TORRENT_SERVICE stop 2>&1 | tee -a \"$LOGFILE\""
+    eval_exec "service \"$TORRENT_SERVICE\" stop"
   fi
 
   log "Killing ovpn pid $pid."
-  eval_exec "kill $pid 2>&1 | tee -a \"$LOGFILE\""
+  eval_exec "kill $pid"
 
   # Reset firewall settings (killswitch)
   log "Disable killswitch firewall configration"
-  eval_exec "ufw --force reset 2>&1 | tee -a \"$LOGFILE\""
+  eval_exec "ufw --force reset"
 
   # Wait for the background ovpn tunnel to close
   sleep 5
@@ -183,24 +184,37 @@ function getVpnIp() {
     echo "$ip"
 }
 
-#@ DESCRIPTION: Executes or suppresses commands based on test-run setting.
-#@ PARAM $1: The command to execute.
-#@ REMARKS: You must use $? to get result. 
+#@ DESCRIPTION: Executes or suppresses a trusted shell command based on TEST_RUN.
+#@ PARAM $1: The trusted shell command to execute.
+#@ REMARKS:
+#@   - The command is logged before execution.
+#@   - Command stdout/stderr is written to both the terminal and LOGFILE.
+#@   - When TEST_RUN=true, the command is logged but not executed.
+#@   - The argument is evaluated as shell syntax and MUST NOT contain unvalidated input.
 #@ WARNING: Only the exit code for the first command in the pipeline will get returned!
-#@ USAGE: eval_exec "ls \"*.txt\" 2>&1 | tee -a \"$LOGFILE\"" ; echo $?
-#@ RETURNS: Exit code. 
-function eval_exec
+#@ USAGE: eval_exec "ls \"*.txt\" ; echo $?
+#@ RETURNS: Exit code returned by the executed command.
+function eval_exec()
 {
+  local command="$1"
   local result=0
-  log "Exec: $1"
-  if [[ "$TEST_RUN" != "true" ]]; then
-    # We only care about the exit code of the sub-shell running under the eval shell
-    # So we are dumping all output from eval to the bit-bucket but capturing the 
-    # 1st exit code of the first command being executed in the sub-shell pipe-line. 
-    eval "${1}; "'PIPE=${PIPESTATUS[0]}' &> /dev/null 
-    result=$PIPE
+
+  log "Exec: $command"
+
+  if [[ "${TEST_RUN:-false}" == "true" ]]; then
+    return 0
   fi
-  return $result
+
+  # The if statement intentionally places the pipeline in a conditional
+  # context so errexit does not terminate the script before PIPESTATUS
+  # can be captured.
+  if eval "$command" 2>&1 | tee -a "$LOGFILE"; then
+    result=${PIPESTATUS[0]}
+  else
+    result=${PIPESTATUS[0]}
+  fi
+
+  return "$result"
 }
 
 #@ DESCRIPTION: Log message.
