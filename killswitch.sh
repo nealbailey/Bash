@@ -2,7 +2,7 @@
 #: Title: killswitch.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Date: 03/25/2019
-#: Updated: 07/05/2024
+#: Updated: 08/17/2026
 #: Purpose: Establish or terminate VPN killswitch
 #
 #: Usage: ./killswitch.sh [options]
@@ -22,6 +22,7 @@
 # V1.0   - initial release
 # V1.1   - added new required steps for ubuntu 22.04 UFW
 # V1.2   - allow firewall rules reset even if tunnel is not established
+# V1.3   - cleanup eval_exec() function
 #
 # ----------------------------------------------------------------------
 # GNU General Public License
@@ -56,8 +57,8 @@ description="Configures VPN killswitch (halt Internet if VPN drops)"
 usage="$scriptname [-s|-d|-t|-l|-o|-h|-v]"
 optionusage="-s:\tEnable the kill switch\n  -d:\tDisable the kill switch\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
 optionexamples=" ./"$scriptname"\n  ./"$scriptname" -so \n\n" 
-date_of_creation="2024-07-05"
-version=1.2.0
+date_of_creation="2026-08-17"
+version=1.3.0
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 LOGFILE="/var/log/$scriptname.log"  # Log file path
@@ -67,41 +68,54 @@ LOGFILE="/var/log/$scriptname.log"  # Log file path
 
 #@ DESCRIPTION: Enables the VPN kill-switch.
 function EnableKillSwitch {
-  eval_exec "ufw --force reset 2>&1"
+  eval_exec "ufw --force reset"
   eval_exec "ufw allow in to $SUBNET"
   eval_exec "ufw allow out to $SUBNET"
-  eval_exec "ufw allow Samba 2>&1"
-  eval_exec "ufw default deny incoming 2>&1"
-  eval_exec "ufw default deny outgoing 2>&1"
-  eval_exec "ufw allow out to $TUNNEL 2>&1"
-  eval_exec "ufw allow out on $VPNIFACE from any to any 2>&1"
-  eval_exec "ufw allow in on $VPNIFACE from any to any 2>&1"
-  eval_exec "ufw --force enable 2>&1"
+  eval_exec "ufw allow Samba"
+  eval_exec "ufw default deny incoming"
+  eval_exec "ufw default deny outgoing"
+  eval_exec "ufw allow out to $TUNNEL"
+  eval_exec "ufw allow out on $VPNIFACE from any to any"
+  eval_exec "ufw allow in on $VPNIFACE from any to any"
+  eval_exec "ufw --force enable"
 }
 
 #@ DESCRIPTION: Enables the VPN kill-switch.
 function DisableKillSwitch {
-  eval_exec "ufw reset 2>&1"
+  eval_exec "ufw reset"
 }
 
-#@ DESCRIPTION: Executes or suppresses commands based on test-run setting.
-#@ PARAM $1: The command to execute.
-#@ REMARKS: You must use $? to get result. 
+#@ DESCRIPTION: Executes or suppresses a trusted shell command based on TEST_RUN.
+#@ PARAM $1: The trusted shell command to execute.
+#@ REMARKS:
+#@   - The command is logged before execution.
+#@   - Command stdout/stderr is written to both the terminal and LOGFILE.
+#@   - When TEST_RUN=true, the command is logged but not executed.
+#@   - The argument is evaluated as shell syntax and MUST NOT contain unvalidated input.
 #@ WARNING: Only the exit code for the first command in the pipeline will get returned!
-#@ USAGE: eval_exec "ls \"*.txt\" 2>&1 | tee -a \"$LOGFILE\"" ; echo $?
-#@ RETURNS: Exit code. 
-function eval_exec
+#@ USAGE: eval_exec "ls \"*.txt\" ; echo $?
+#@ RETURNS: Exit code returned by the executed command.
+function eval_exec()
 {
+  local command="$1"
   local result=0
-  log "Exec: $1"
-  if [[ "$TEST_RUN" != "true" ]]; then
-    # We only care about the exit code of the sub-shell running under the eval shell
-    # So we are dumping all output from eval to the bit-bucket but capturing the 
-    # 1st exit code of the first command being executed in the sub-shell pipe-line. 
-    eval "${1}; "'PIPE=${PIPESTATUS[0]}' &> /dev/null 
-    result=$PIPE
+
+  log "Exec: $command"
+
+  if [[ "${TEST_RUN:-false}" == "true" ]]; then
+    return 0
   fi
-  return $result
+
+  # The if statement intentionally places the pipeline in a conditional
+  # context so errexit does not terminate the script before PIPESTATUS
+  # can be captured.
+  if eval "$command" 2>&1 | tee -a "$LOGFILE"; then
+    result=${PIPESTATUS[0]}
+  else
+    result=${PIPESTATUS[0]}
+  fi
+
+  return "$result"
 }
 
 #@ DESCRIPTION: Log message.

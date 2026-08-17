@@ -31,8 +31,9 @@
 # treat unset variables as an error and exit immediately, and prevents errors in a pipeline from being masked.
 set -euo pipefail
 
+#
 # Program Variables
-new_file_count=0
+#
 # Mouted network file share path to copy mp3s to
 file_share="$HOME/Network/baileyfs02.baileysoft.lan/Files/Uploads/Music"
 # The path where zotify will download music files to. This is the default path for zotify.
@@ -55,27 +56,37 @@ copyright="Baileysoft Solutions"
 # Log file path
 LOGFILE="/tmp/$scriptname.log"
 
-# Block eval_exec from executing commands when TEST_RUN is set to true.
-TEST_RUN=false  
-
-#@ DESCRIPTION: Executes or suppresses commands based on test-run setting.
-#@ PARAM $1: The command to execute.
-#@ REMARKS: You must use $? to get result. 
+#@ DESCRIPTION: Executes or suppresses a trusted shell command based on isSimulation.
+#@ PARAM $1: The trusted shell command to execute.
+#@ REMARKS:
+#@   - The command is logged before execution.
+#@   - Command stdout/stderr is written to both the terminal and LOGFILE.
+#@   - When isSimulation=true, the command is logged but not executed.
+#@   - The argument is evaluated as shell syntax and MUST NOT contain unvalidated input.
 #@ WARNING: Only the exit code for the first command in the pipeline will get returned!
-#@ USAGE: eval_exec "ls \"*.txt\" 2>&1 | tee -a \"$LOGFILE\"" ; echo $?
-#@ RETURNS: Exit code. 
-function eval_exec
+#@ USAGE: eval_exec "ls \"*.txt\" ; echo $?
+#@ RETURNS: Exit code returned by the executed command.
+function eval_exec()
 {
+  local command="$1"
   local result=0
-  log "Exec: $1"
-  if [[ "$TEST_RUN" != "true" ]]; then
-    # We only care about the exit code of the sub-shell running under the eval shell
-    # So we are dumping all output from eval to the bit-bucket but capturing the 
-    # 1st exit code of the first command being executed in the sub-shell pipe-line. 
-    eval "${1}; "'PIPE=${PIPESTATUS[0]}' &> /dev/null 
-    result=$PIPE
+
+  log "Exec: $command"
+
+  if [[ "${isSimulation:-false}" == "true" ]]; then
+    return 0
   fi
-  return $result
+
+  # The if statement intentionally places the pipeline in a conditional
+  # context so errexit does not terminate the script before PIPESTATUS
+  # can be captured.
+  if eval "$command" 2>&1 | tee -a "$LOGFILE"; then
+    result=${PIPESTATUS[0]}
+  else
+    result=${PIPESTATUS[0]}
+  fi
+
+  return "$result"
 }
 
 #@ DESCRIPTION: Prints usage information
@@ -142,22 +153,18 @@ function ExecuteZotifyDownload
 
 #@ DESCRIPTION: Launch ntag package to update file ID3Tags.
 function LaunchNTag
-{
-  if [[ $new_file_count -gt 0 ]]; then
-    # Verify ntag is installed
-    if ! flatpak info com.github.nrittsti.NTag &>/dev/null; then
-      log "Ntag flatpak not installed: com.github.nrittsti.NTag"
-      log "https://flathub.org/apps/com.github.nrittsti.NTag"
-      exit 100
-    fi
-    # Launch NTag
-    log "Launching ntag: com.github.nrittsti.NTag"
-    log "Don't forget to rename in ntag before editing the ID3Tags data."
-    eval_exec "flatpak run com.github.nrittsti.NTag 2>&1 | tee -a \"$LOGFILE\""
-  else
-    log "INFO: No files were staged so no need to continue. Exiting."
-    exit 1
+{  
+  # Verify ntag is installed
+  if ! flatpak info com.github.nrittsti.NTag &>/dev/null; then
+    log "Ntag flatpak not installed: com.github.nrittsti.NTag"
+    log "https://flathub.org/apps/com.github.nrittsti.NTag"
+    exit 100
   fi
+
+  # Launch NTag
+  log "Launching ntag: com.github.nrittsti.NTag"
+  log "Don't forget to rename in ntag before editing the ID3Tags data."
+  eval_exec "flatpak run com.github.nrittsti.NTag"  
 }
 
 #@ DESCRIPTION: Copies rips from download path to temp staging path.
@@ -171,20 +178,27 @@ function StageDownloadedRips
 
   # Delete mp3 files in New staging folder
   log "Delete previous staged mp3 files in the New staging folder"
-  eval_exec "rm -frv \"$stage_path\"/*.mp3 2>&1 | tee -a \"$LOGFILE\""
-  #eval_exec "find \"$stage_path\" -mindepth 1 -maxdepth 1 -iname \".mp3\" -exec rm -rfv -- {} + 2>&1 | tee -a \"$LOGFILE\""
-  
+  eval_exec "rm -frv \"$stage_path\"/*.mp3"
+  #eval_exec "find \"$stage_path\" -mindepth 1 -maxdepth 1 -iname \".mp3\" -exec rm -rfv -- {} + "
+
+  log "Searching for new songs to sync with server"  
+  #local find_count=$(find ./Zotify\ Albums/ \( -name '*.mp3' \) -mtime -1 | wc -l)
+  log "Exec: find "$zotify_dl_path" \( -name '*.mp3' \) -mtime -1 | wc -l)"
+  local find_count=$(find "$zotify_dl_path" \( -name '*.mp3' \) -mtime -1 | wc -l)
+    
+  log "Found '$find_count' new music files to stage"
+
   # Copy any music files created in the previous 24 hours into New folder
   log "Copying new zotify music downloads into staging folder"
   
-  #local find_count=$(find ./Zotify\ Albums/ \( -name '*.mp3' \) -mtime -1 | wc -l)
-  local find_count=$(find "$zotify_dl_path" \( -name '*.mp3' \) -mtime -1 | wc -l)
-  log "Found '$find_count' new music files to stage"
-
   if [ "$find_count" -gt 0 ]; then
-    eval_exec "find \"$zotify_dl_path\" \( -name '*.mp3' \) -mtime -1  -exec cp -uv {} \"$stage_path\" \; 2>&1 | tee -a \"$LOGFILE\""
+    eval_exec "find \"$zotify_dl_path\" \( -name '*.mp3' \) -mtime -1  -exec cp -uv {} \"$stage_path\" \;"
   fi
-  new_file_count="$find_count"
+
+  if [[ $find_count -eq 0 ]]; then
+    log "Warn: No files were staged so no need to continue. Exiting."
+    exit 1
+  fi
 }
 
 # #@ DESCRIPTION: Copies rips from temp staging path to network file share.
@@ -202,7 +216,7 @@ function CopyRipsToServer
     return 0
   fi
 
-  eval_exec "cp -uv \"$stage_path\"/*.mp3 \"$file_share\" 2>&1 | tee -a \"$LOGFILE\""  
+  eval_exec "cp -uv \"$stage_path\"/*.mp3 \"$file_share\""  
 }
 
 # Create the log file and set permissions to be readable and writable by the user only.
