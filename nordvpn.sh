@@ -83,7 +83,7 @@ version=2.7.0
 author="Neal T. Bailey"
 copyright="Copyright, Baileysoft Solutions"
 
-LOGFILE="/var/log/$scriptname.log"       # Log file path
+LOGFILE="/tmp/$scriptname.log"       # Log file path
 
 # Add admin bin to current PATH
 export PATH=$PATH:/sbin
@@ -285,9 +285,11 @@ fi
 # Start the application trace log
 if [[ ! -e "$LOGFILE" ]] ; then
   touch "$LOGFILE"
+  chmod 644 "$LOGFILE"
 fi 
 
-chmod 755 "$LOGFILE" && log "Started executing script tasks."
+log "Started executing process: $scriptname"
+log "logfile is: \"$LOGFILE\""
 
 # Ensure openvpn package is installed
 if [ $(which openvpn | grep -c "openvpn") -eq 0 ] ; then

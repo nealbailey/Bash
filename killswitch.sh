@@ -61,7 +61,7 @@ date_of_creation="2026-08-17"
 version=1.3.0
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
-LOGFILE="/var/log/$scriptname.log"  # Log file path
+LOGFILE="/tmp/$scriptname.log"  # Log file path
 
 
 # Start Function Definitions
@@ -187,10 +187,11 @@ fi
 # Start the application trace log
 if [ ! -e "$LOGFILE" ]; then 
     log "Creating trace-log: $LOGFILE"
-    touch "$LOGFILE" && chmod 755 "$LOGFILE"
+    touch "$LOGFILE" && chmod 644 "$LOGFILE"
 fi
 
-log "Started executing script tasks."
+log "Started executing process: $scriptname"
+log "logfile is: \"$LOGFILE\""
 
 # Do not apply firewall rules if killswitch is already applied
 if [[ $DISABLED == "false" ]]; then

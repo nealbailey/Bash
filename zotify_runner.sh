@@ -224,6 +224,11 @@ touch "$LOGFILE"
 chmod 600 "$LOGFILE"
 : > "$LOGFILE"
 
+# Start the application trace log
+log "Started executing process: $scriptname"
+log "logfile is: \"$LOGFILE\""
+echo ""
+
 #
 # Pre-requisite sanity check. These segments ensure nothing unexpected will prevent
 # the process from completing at runtime due to unknown or invalid machine configuration. 
@@ -276,12 +281,16 @@ done
 
 # Prompt user for Spotify URLs to download
 PromptForSpotifyUrls
+echo ""
 
 # Stage the downloaded rips for ID3Tag editing
 StageDownloadedRips
+echo ""
 
 # Launch NTag to edit ID3Tags of the staged files
 LaunchNTag
+echo ""
 
 # Copy the rips to the network file share
 CopyRipsToServer
+echo ""
