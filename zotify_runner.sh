@@ -5,7 +5,7 @@
 #:
 #: Changes: 
 #:  11/19/2022: V0.1.0 - Initial release
-#:  08/14/2026: V0.2.0 - Added test-run option and improved logging
+#:  08/20/2026: V0.2.0 - Added test-run option and improved logging
 #:
 #: Usage: $ ./zotify_runner.sh
 #: Depends: requires package(s)
@@ -29,7 +29,7 @@
 
 # Sets the script to exit immediately if a command exits with a non-zero status,
 # treat unset variables as an error and exit immediately, and prevents errors in a pipeline from being masked.
-set -euo pipefail
+#set -euo pipefail
 
 #
 # Program Variables
@@ -48,13 +48,42 @@ scriptname=${0##*/}
 description="Spotify Ripper and ID3Tag Editor"
 optionusage="Usage: $0 [options]\n\n Options:\n  -t, --test-run\tSimulate workflow without calling Spotify or copying files\n  -h, --help\t\tDisplay this help message\n  -v, --version\t\tDisplay version information"
 optionexamples="Examples:\n  $0 -t\t\tSimulate the workflow\n"
-date_of_creation="2026-08-14"
+date_of_creation="2026-08-20"
 version=0.2.0
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 
 # Log file path
 LOGFILE="/tmp/$scriptname.log"
+PID_FILE="/tmp/$scriptname.running"
+
+#@ DESCRIPTION: Calculates the amounts of seconds that have passed since a file was modified.
+#@ REMARKS: You must use $? to get result.
+#@ PARAM $1: The full file name (including path).
+#@ USAGE: get_seconds_since_modification "$FILE_NAME"
+#@        seconds=$?
+#@        echo $seconds
+#@ RETURNS: Exit code. 
+function get_seconds_since_modification 
+{
+  local seconds=0
+  if [[ -f "$1" ]] ; then
+    seconds=`echo $(($(date +%s)-$(date +%s -r "$1")))`
+  fi
+  return $seconds
+}
+
+#@ DESCRIPTION: Unlocks the process
+#@ REMARKS: Handles the SIGTERM EXIT broadcast
+function on_exit() 
+{ 
+  if [[ -f "$PID_FILE" ]] ; then
+    log "Completed executing process: $scriptname"
+    get_seconds_since_modification "$PID_FILE" ; local seconds=$?
+    printf 'Process executed for:\t%dh:%dm:%ds\n' $(($seconds/3600)) $(($seconds%3600/60)) $(($seconds%60))
+    rm -f "$PID_FILE"
+  fi  
+}
 
 #@ DESCRIPTION: Executes or suppresses a trusted shell command based on isSimulation.
 #@ PARAM $1: The trusted shell command to execute.
@@ -183,7 +212,7 @@ function StageDownloadedRips
 
   log "Searching for new songs to sync with server"  
   #local find_count=$(find ./Zotify\ Albums/ \( -name '*.mp3' \) -mtime -1 | wc -l)
-  log "Exec: find "$zotify_dl_path" \( -name '*.mp3' \) -mtime -1 | wc -l)"
+  log "Exec: find \"$zotify_dl_path\" \( -name '*.mp3' \) -mtime -1 | wc -l)"
   local find_count=$(find "$zotify_dl_path" \( -name '*.mp3' \) -mtime -1 | wc -l)
     
   log "Found '$find_count' new music files to stage"
@@ -203,12 +232,7 @@ function StageDownloadedRips
 
 # #@ DESCRIPTION: Copies rips from temp staging path to network file share.
 function CopyRipsToServer
-{ 
-  # Ensure the server directory exists
-  if [ ! -d "$file_share" ]; then
-    log "The server directory \"$file_share\" does not exist. Is it mounted?"
-    return 1
-  fi
+{   
   log "Copying new music files to server share: $file_share"
   
   if [[ $isSimulation == true ]]; then
@@ -224,10 +248,12 @@ touch "$LOGFILE"
 chmod 600 "$LOGFILE"
 : > "$LOGFILE"
 
-# Start the application trace log
-log "Started executing process: $scriptname"
-log "logfile is: \"$LOGFILE\""
-echo ""
+# Ensure the script is not currently in a RUNNING state.
+if [[ -f "$PID_FILE" ]] ; then
+  STDOUT_LOG_ONLY="false"
+  log "A previous instance of this process is currently executing."
+  exit 101
+fi
 
 #
 # Pre-requisite sanity check. These segments ensure nothing unexpected will prevent
@@ -275,9 +301,35 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Ensure the server directory exists
+if [ ! -d "$file_share" ]; then
+  log "The file share directory: '$file_share' does not exist."
+  log "Please ensure the directory exists and is accessible and try again."
+  exit 104
+fi
+
 #
 # Execute the main script functions
 #
+
+# Start the application trace log
+log "Started executing process: $scriptname"
+log "logfile is: \"$LOGFILE\""
+log "pidfile is: \"$PID_FILE\""
+log "download_path is: \"$zotify_dl_path\""
+log "id3tag stage_path is: \"$stage_path\""
+log "file_share is: \"$file_share\""
+echo ""
+
+# Create a PID lock to create singleton execution. 
+# Need to sleep for at least one second so the timestamp 
+# of the PID_FILE does not match the timestamp of any files
+# being actively processed by the application.
+echo "$(date +"%d%b%Y.%H%M")" > "$PID_FILE"
+#sleep 1s
+
+# Trap SIGTERM broadcast to ensure the PID lock is released on exit. 
+trap on_exit EXIT
 
 # Prompt user for Spotify URLs to download
 PromptForSpotifyUrls
@@ -294,3 +346,6 @@ echo ""
 # Copy the rips to the network file share
 CopyRipsToServer
 echo ""
+
+# Cleanup: Remove the PID lock file to allow future executions of this script.
+on_exit
