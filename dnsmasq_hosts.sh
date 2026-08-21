@@ -228,7 +228,7 @@ function validate_blocklist() {
     exit "$EXIT_GENERAL_DNS_ERROR"
   fi
 
-  log "Adblock tests passed. Network ad blocking in enabled and working correctly"
+  log "Adblock tests passed. Network ad blocking is enabled and working correctly"
   return $EXIT_SUCCESS
 }
 
