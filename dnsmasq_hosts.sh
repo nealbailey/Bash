@@ -254,10 +254,8 @@ done
 
 # Ensure user is root
 if [[ $EUID -ne 0 ]]; then  
-  # If user is not root they need to run this script in a terminal to see this message.
-  # Cannot allow silent mode 
-  STDOUT_LOG_ONLY="false"
-  log "You must be root to execute this application."
+  # If user is not root they need to run this script in a terminal to see this message.  
+  echo "You must be root to execute this application."
   exit 100
 fi
 
