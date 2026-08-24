@@ -222,7 +222,10 @@ function validate_blocklist() {
   log "Testing ad-blocking functionality"
   log "EXEC: host $known_ad_domain $dnsmasq_host_dns | grep \"has address 0.0.0.0\""
 
-  if ! host "$known_ad_domain" "$dnsmasq_host_dns" grep -q 'has address 0\.0\.0\.0'; then
+  local is_blocking
+  is_blocking=$(host "$known_ad_domain" "$dnsmasq_host_dns" | grep "has address 0.0.0.0")
+
+  if [[ -z "$is_blocking" ]]; then
     log "WARN: known ad domain was NOT blocked!"
     eval_exec "host $known_ad_domain $dnsmasq_host_dns"
     exit "$EXIT_GENERAL_DNS_ERROR"

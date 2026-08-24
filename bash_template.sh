@@ -204,6 +204,13 @@ trap on_exit EXIT
 # Pre-requisite sanity check. These segments ensure nothing unexpected will prevent
 # the process from completing at runtime due to unknown or invalid machine configuration. 
 #
+## Ensure user is root
+#if [[ $EUID -ne 0 ]]; then  
+#  # If user is not root they need to run this script in a terminal to see this message.  
+#  echo "You must be root to execute this application."
+#  exit 100
+#fi
+
 ## Verify that package is installed
 #if ! command -v pacakge_name &> /dev/null; then
 #    log "Error: package_name is not installed. Please install package_name to use this script."
