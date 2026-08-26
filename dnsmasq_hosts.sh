@@ -77,6 +77,7 @@ EXIT_GENERAL_DNS_ERROR=3
 EXIT_INVALID_CONFIGURATION=4
 EXIT_MISSING_DEPENDENCY=5
 EXIT_MISSING_FILE=6
+EXIT_USER_UNAUTHORIZED=7
 ## ENDREGION: Exit Codes
 
 ## REGION: Template function definitions
@@ -259,7 +260,7 @@ done
 if [[ $EUID -ne 0 ]]; then  
   # If user is not root they need to run this script in a terminal to see this message.  
   echo "You must be root to execute this application."
-  exit 100
+  exit $EXIT_USER_UNAUTHORIZED
 fi
 
 # Create the log file and set permissions to be readable and writable by the owner and readable by others.

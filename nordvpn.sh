@@ -76,8 +76,8 @@ DESTROY_TUNNEL="false"                   # Close any existing openvpn tunnel
 scriptname=${0##*/}
 description="Establishes a split-tunnel VPN connection."
 usage="$scriptname [-d|-s|-t|-l|-o|-h|-v]"
-optionusage="-d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
-optionexamples=" ./"$scriptname"\n  ./"$scriptname" -so \n\n" 
+optionusage="Usage $0 [options]\n\n Options:\n  -d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
+optionexamples="Examples:\n  $0 -so \t(Start the VPN tunnel with logging to console & file)\n\n" 
 date_of_creation="2026-08-17"
 version=2.7.0
 author="Neal T. Bailey"
@@ -88,7 +88,87 @@ LOGFILE="/tmp/$scriptname.log"       # Log file path
 # Add admin bin to current PATH
 export PATH=$PATH:/sbin
 
-# Start Function Definitions
+## REGION: Exit Codes
+EXIT_SUCCESS=0
+EXIT_USER_UNAUTHORIZED=1
+EXIT_GENERAL_ERROR=2
+EXIT_INVALID_CONFIGURATION=3
+EXIT_MISSING_DEPENDENCY=4
+EXIT_MISSING_FILE=
+EXIT_TUNNEL_ALREADY_RUNNING=6
+## ENDREGION: Exit Codes
+
+## REGION: Template function definitions
+
+#@ DESCRIPTION: Executes or suppresses a trusted shell command based on TEST_RUN.
+#@ PARAM $1: The trusted shell command to execute.
+#@ REMARKS:
+#@   - The command is logged before execution.
+#@   - Command stdout/stderr is written to both the terminal and LOGFILE.
+#@   - When TEST_RUN=true, the command is logged but not executed.
+#@   - The argument is evaluated as shell syntax and MUST NOT contain unvalidated input.
+#@ WARNING: Only the exit code for the first command in the pipeline will get returned!
+#@ USAGE: eval_exec "ls \"*.txt\" ; echo $?
+#@ RETURNS: Exit code returned by the executed command.
+function eval_exec()
+{
+  local command="$1"
+  local result=0
+
+  log "Exec: $command"
+
+  if [[ "${TEST_RUN:-false}" == "true" ]]; then
+    return 0
+  fi
+
+  # The if statement intentionally places the pipeline in a conditional
+  # context so errexit does not terminate the script before PIPESTATUS
+  # can be captured.
+  if eval "$command" 2>&1 | tee -a "$LOGFILE"; then
+    result=${PIPESTATUS[0]}
+  else
+    result=${PIPESTATUS[0]}
+  fi
+
+  return "$result"
+}
+
+#@ DESCRIPTION: Prints usage information
+function usage
+{ 
+  printf "%s - %s\n" "$scriptname" "$description"
+  printf "%s\n $optionusage"
+  printf "%s\n\n $optionexamples"
+}
+
+#@ DESCRIPTION: Print version information
+function version
+{                  
+  printf "%s: %s\n" "$scriptname" "$description"
+  printf "Release Date: %s\n" "$date_of_creation"
+  printf "Version: %s\n" "$version"
+  printf "Copyright: %s, %s\n" "$author" "$copyright"
+}
+
+#@ DESCRIPTION: Log message.
+#@ PARAM $1: The message to log.
+#@ REMARKS: Sends message to stdout with -o flag
+function log   
+{
+  local timestamp
+  timestamp=$(date '+%Y-%m-%dT%H:%M:%S')
+  
+  # Do not print message to terminal
+  if [[ $STDOUT_LOG_ONLY == "false" ]] ; then
+    printf "%s\n" "$1"
+  fi
+  
+  printf '%s %s\n' "$timestamp" "$1" >> "$LOGFILE"
+}
+
+## ENDREGION: Template function definitions
+
+## REGION: Script function definitions
 
 #@ DESCRIPTION: Injects DNS and local LAN routes into routing table.
 #@ RETURNS: Exit code.
@@ -132,7 +212,7 @@ function configureSplitTunnel
 function EstablishVpnTunnel()
 { 
   cd $VPN_CWD
-  local ip="$(getVpnIp $NORDVPN_HOST)"
+  local ip="$(getVpnIp)"
   log "Establishing OpenVPN tunnel - Host: $NORDVPN_HOST, IP: $ip"
   log "Exec: $VPN_CMD 2>&1 &"
   $VPN_CMD 2>&1 >> "$LOGFILE" &
@@ -180,72 +260,11 @@ function destroyVpnTunnel()
 #@ PARAM $1: The NordVPN server name (e.g., ca1066)
 #@ RETURNS: The VPN server IP address.
 function getVpnIp() {
-    local ip=$(cat "$VPN_CWD/ovpn_tcp/$1.nordvpn.com.tcp.ovpn" | grep -i "remote " | cut -d ' ' -f2 | head -n 1)
+    local ip=$(cat "$NORDVPN_CONF" | grep -i "remote " | cut -d ' ' -f2 | head -n 1)
     echo "$ip"
 }
 
-#@ DESCRIPTION: Executes or suppresses a trusted shell command based on TEST_RUN.
-#@ PARAM $1: The trusted shell command to execute.
-#@ REMARKS:
-#@   - The command is logged before execution.
-#@   - Command stdout/stderr is written to both the terminal and LOGFILE.
-#@   - When TEST_RUN=true, the command is logged but not executed.
-#@   - The argument is evaluated as shell syntax and MUST NOT contain unvalidated input.
-#@ WARNING: Only the exit code for the first command in the pipeline will get returned!
-#@ USAGE: eval_exec "ls \"*.txt\" ; echo $?
-#@ RETURNS: Exit code returned by the executed command.
-function eval_exec()
-{
-  local command="$1"
-  local result=0
-
-  log "Exec: $command"
-
-  if [[ "${TEST_RUN:-false}" == "true" ]]; then
-    return 0
-  fi
-
-  # The if statement intentionally places the pipeline in a conditional
-  # context so errexit does not terminate the script before PIPESTATUS
-  # can be captured.
-  if eval "$command" 2>&1 | tee -a "$LOGFILE"; then
-    result=${PIPESTATUS[0]}
-  else
-    result=${PIPESTATUS[0]}
-  fi
-
-  return "$result"
-}
-
-#@ DESCRIPTION: Log message.
-#@ PARAM $1: The message to log.
-#@ REMARKS: Sends message to stdout with -o flag
-function log   
-{
-  if [[ $STDOUT_LOG_ONLY == "false" ]] ; then
-    echo "$1"
-  fi  
-  echo $(date +%Y-%m-%dT%H:%M) "$1" >> "$LOGFILE"
-}
-
-#@ DESCRIPTION: Prints usage information
-function usage
-{ 
-  printf "%s - %s\n" "$scriptname" "$description"
-  printf "Usage: %s\n" "$usage"
-  printf "%s  $optionusage"
-  printf "\nExamples: %s\n $optionexamples"
-}
-
-#@ DESCRIPTION: Print version information
-function version
-{                  
-  printf "%s (v%s)\n" "$scriptname" "$version"
-  printf "by %s, %d\n" "$author"  "${date_of_creation%%-*}"
-  printf "%s\n" "$copyright"
-}
-
-# End Function Definitions
+## ENDREGION: Script function definitions
 
 # Command-line arguments processing
 optstring=dstlhov
@@ -274,7 +293,7 @@ if [[ $EUID -ne 0 ]]; then
   # If user does not have root access then we cannot log the error. 
   # If user is not root they need to run this script in a terminal to see this message.
   echo "You must be root to execute this application."
-  exit 100
+  exit $EXIT_USER_UNAUTHORIZED
 fi
 
 if [[ "$APPEND_LOG" == "false" ]]; then
@@ -289,22 +308,31 @@ if [[ ! -e "$LOGFILE" ]] ; then
 fi 
 
 log "Started executing process: $scriptname"
-log "logfile is: \"$LOGFILE\""
+echo ""
 
 # Ensure openvpn package is installed
-if [ $(which openvpn | grep -c "openvpn") -eq 0 ] ; then
+if ! command -v openvpn &> /dev/null; then
   STDOUT_LOG_ONLY="false"
-  log "OpenVPN is not installed on this device."
+  log "Error: OpenVPN is not installed on this device."
   log "https://support.nordvpn.com/Connectivity/Linux/1047409422/How-can-I-connect-to-NordVPN-using-Linux-Terminal.htm"
-  exit 101
+  exit $EXIT_MISSING_DEPENDENCY
 fi
 
 # Check if transmission-daemon is installed
-if [ $(which transmission-daemon | grep -c "daemon") -eq 0 ] ; then
+if ! command -v transmission-daemon &> /dev/null; then
   STDOUT_LOG_ONLY="false"
-  log "transmission-daemon is not installed on this device."
+  log "Error: transmission-daemon is not installed on this device."
   TORRENT_SERVICE_INSTALLED="false"
 fi
+
+
+log "log file is: $LOGFILE"
+log "vpn path is: $VPN_CWD"
+log "NordVPN host : $NORDVPN_HOST"
+log "NordVPN config file is: $NORDVPN_CONF"
+log "NordVPN credentials file is: $NORDVPN_CRED"
+echo ""
+#log "VPN command is: $VPN_CMD"
 
 # Tear down any existing tunnel before establishing a new one
 if [ "$DESTROY_TUNNEL" == "true" ]; then
@@ -314,8 +342,8 @@ fi
 # Ensure there is not already a tunnel established
 if [ $(ifconfig | grep -ic tun0) -ne 0 ] ; then
   STDOUT_LOG_ONLY="false"
-  log "A tunnel is already established on iface tun0."
-  exit 102
+  log "Warn: A tunnel is already established on iface tun0."
+  exit $EXIT_TUNNEL_ALREADY_RUNNING
 fi
 
 # Check for test-run action - write log preamble
@@ -323,23 +351,27 @@ if [[ "$TEST_RUN" == "true" ]]; then
   log "THIS IS A TEST RUN! EXEC COMMANDS WILL NOT BE ISSUED TO THE SERVER!"
 fi
 
+#
+# Execute the main script workflow
+#
+
 # Kickstart the tunnel creation process
 if [ "$CREATE_TUNNEL" == "true" ]; then
 
   # Ensure the NordVPN configuration file exists.
   if [[ ! -f "$NORDVPN_CONF" ]] ; then
     STDOUT_LOG_ONLY="false"
-    log "Could not find the NordVPN configuration file necessary to open a connection."
+    log "Error: Could not find the NordVPN configuration file necessary to open a connection."
     log "Not Found: $NORDVPN_CONF"
-    exit 103
+    exit $EXIT_MISSING_CONFIG
   fi
 
   # Ensure the NordVPN credentials file exists.
   if [[ ! -f "$NORDVPN_CRED" ]] ; then
     STDOUT_LOG_ONLY="false"
-    log "Could not find the NordVPN credentials file necessary to authenticate a connection."
+    log "Error: Could not find the NordVPN credentials file necessary to authenticate a connection."
     log "Not found: $NORDVPN_CRED"
-    exit 104
+    exit $EXIT_MISSING_CONFIG
   fi
 
   # Create the tunnel
@@ -354,5 +386,7 @@ if [ $? -eq 0 ]; then
   fi   
 else
   log "Error: Script tasks failed."
-  exit 1
+  exit $EXIT_GENERAL_ERROR
 fi
+
+exit $EXIT_SUCCESS
