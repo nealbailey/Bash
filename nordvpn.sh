@@ -2,12 +2,14 @@
 #: Title: nordvpn.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Date: 07/10/2015
-#: Updated: 08/17/2026
+#: Updated: 09/15/2026
 #: Purpose: Create a split VPN tunnel
 #
 #: Usage: ./nordvpn.sh [options]
 #: Options:
 #:  -s,	     : start the VPN split tunnel
+#:  -d,      : destroy the VPN split tunnel
+#:  -p,      : validate the WAN connection by pinging the test site
 #:  -t,      : do not make any changes on the server
 #:  -l,      : create a new log file instead of appending
 #:  -o,      : send stdout/stderr messages to the console along with the log
@@ -25,6 +27,7 @@
 # V2.5   - configureSplitTunnel shouldn't start transmission if IP did not change after creating tunnel
 # V2.6   - added getVpnIp function to get the VPN server IP address from the ovpn config file
 # V2.7   - cleaned up eval_exec function
+# V2.8   - added option to validate WAN connection by attempting wget while vpn is active
 #
 # Installation:
 # For ease of use, create an alias in ~/.bash_alias:
@@ -33,11 +36,12 @@
 # Using aliased command: 
 #  Start tunnel: nordvpn -s
 #  Close tunnel: nordvpn -d
+#  Validate tunnel: nordvpn -p
 # 
 # ----------------------------------------------------------------------
 # GNU General Public License
 # ----------------------------------------------------------------------
-# Copyright (C) 2010-2018 Neal T. Bailey
+# Copyright (C) 2006-2026 Neal T. Bailey
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -69,17 +73,19 @@ TORRENT_SERVICE_INSTALLED="true"         # Flag to indicate whether to do torren
 APPEND_LOG="true"                        # Append to existing log file
 STDOUT_LOG_ONLY="true"                   # Send messages to terminal and log file
 TEST_RUN="false"                         # Simulate tasks but do not execute them
+TEST_SITE="spyconverter.com"             # Site used to test WAN connection
 CREATE_TUNNEL="false"                    # Create a new openvpn tunnel
 DESTROY_TUNNEL="false"                   # Close any existing openvpn tunnel
+VALIDATE_TUNNEL="false"                  # Validate the WAN VPN connection is alive
 
 # Metadata
 scriptname=${0##*/}
 description="Establishes a split-tunnel VPN connection."
 usage="$scriptname [-d|-s|-t|-l|-o|-h|-v]"
-optionusage="Usage $0 [options]\n\n Options:\n  -d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
-optionexamples="Examples:\n  $0 -so \t(Start the VPN tunnel with logging to console & file)\n\n" 
-date_of_creation="2026-08-17"
-version=2.7.0
+optionusage="Usage $0 [options]\n\n Options:\n  -d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -p:\tValidate WAN connection by pinging the test site\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
+optionexamples="Examples:\n  sudo $0 -so \t(Start the VPN tunnel with logging to console & file)\n\n" 
+date_of_creation="2026-09-15"
+version=2.8.0
 author="Neal T. Bailey"
 copyright="Copyright, Baileysoft Solutions"
 
@@ -94,8 +100,10 @@ EXIT_USER_UNAUTHORIZED=1
 EXIT_GENERAL_ERROR=2
 EXIT_INVALID_CONFIGURATION=3
 EXIT_MISSING_DEPENDENCY=4
-EXIT_MISSING_FILE=
+EXIT_MISSING_FILE=5
 EXIT_TUNNEL_ALREADY_RUNNING=6
+EXIT_OPENVPN_ERROR=7
+EXIT_WAN_CONNECTION_DROPPED=8
 ## ENDREGION: Exit Codes
 
 ## REGION: Template function definitions
@@ -219,7 +227,7 @@ function EstablishVpnTunnel()
   
   if [ $? -ne 0 ]; then
     log "Error: OpenVPN returned an error code."
-	  exit 1
+	  exit $EXIT_OPENVPN_ERROR
   fi
 }
 
@@ -264,10 +272,23 @@ function getVpnIp() {
     echo "$ip"
 }
 
+#@ DESCRIPTION: Validates the WAN connection by attempting to reach a test site.
+#@ RETURNS: Logs the connection status.
+function validateTunnelConnection() {
+  local wpingState=$(wget --spider --connect-timeout=1 --tries=1 -q $TEST_SITE)
+  if [[ $? -eq 0 ]]; then
+    local inetIp=$(dig +short myip.opendns.com @resolver1.opendns.com)
+    log "Connection was successful - WAN connection is up [WAN IP: $inetIp]"    
+  else
+    log "Connection Failed - WAN connection is down"
+    exit $EXIT_WAN_CONNECTION_FAILED
+  fi  
+}
+
 ## ENDREGION: Script function definitions
 
 # Command-line arguments processing
-optstring=dstlhov
+optstring=dstlhovp
 while getopts $optstring opt
 do
   case $opt in
@@ -276,6 +297,7 @@ do
   l) APPEND_LOG="false" ;;
   o) STDOUT_LOG_ONLY="false" ;;
   t) TEST_RUN="true" ;;
+  p) VALIDATE_TUNNEL="true" ;;
   h) usage; exit ;;
   v) version; exit ;;
   *) usage; exit ;;
@@ -307,6 +329,12 @@ if [[ ! -e "$LOGFILE" ]] ; then
   chmod 644 "$LOGFILE"
 fi 
 
+# Validate the WAN connection (if requested)
+if [ "$VALIDATE_TUNNEL" == "true" ]; then
+  validateTunnelConnection
+  exit $EXIT_SUCCESS
+fi
+
 log "Started executing process: $scriptname"
 echo ""
 
@@ -321,10 +349,9 @@ fi
 # Check if transmission-daemon is installed
 if ! command -v transmission-daemon &> /dev/null; then
   STDOUT_LOG_ONLY="false"
-  log "Error: transmission-daemon is not installed on this device."
+  log "Warn: transmission-daemon is not installed on this device."
   TORRENT_SERVICE_INSTALLED="false"
 fi
-
 
 log "log file is: $LOGFILE"
 log "vpn path is: $VPN_CWD"
