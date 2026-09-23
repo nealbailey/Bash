@@ -6,6 +6,7 @@
 #: Changes: 
 #:  11/19/2022: V0.1.0 - Initial release
 #:  08/20/2026: V0.2.0 - Added test-run option and improved logging
+#:  09/23/2026: V0.2.1 - Added Zotify update check
 #:
 #: Usage: $ ./zotify_runner.sh
 #: Depends: requires package(s)
@@ -36,6 +37,8 @@
 #
 # Mouted network file share path to copy mp3s to
 file_share="$HOME/Network/baileyfs02.baileysoft.lan/Files/Uploads/Music"
+# The URL of the Zotify GitHub repository. Used for checking for updates.
+zotify_repo="https://github.com/Googolplexed0/zotify.git"
 # The path where zotify will download music files to. This is the default path for zotify.
 zotify_dl_path="$HOME/Music/Zotify Music"
 # The path where zotify will stage music files to so their ID3 Tags can be edited before copying to the network file share.
@@ -48,8 +51,8 @@ scriptname=${0##*/}
 description="Spotify Ripper and ID3Tag Editor"
 optionusage="Usage: $0 [options]\n\n Options:\n  -t, --test-run\tSimulate workflow without calling Spotify or copying files\n  -h, --help\t\tDisplay this help message\n  -v, --version\t\tDisplay version information"
 optionexamples="Examples:\n  $0 -t\t\tSimulate the workflow\n"
-date_of_creation="2026-08-20"
-version=0.2.0
+date_of_creation="2026-09-23"
+version=0.2.1
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 
@@ -141,6 +144,52 @@ function log() {
   timestamp=$(date '+%Y-%m-%dT%H:%M:%S')
   printf '%s\n' "$1"
   printf '%s %s\n' "$timestamp" "$1" >> "$LOGFILE"
+}
+
+#@ DESCRIPTION: Checks whether a newer Zotify commit is available on GitHub.
+function CheckForZotifyUpdate()
+{    
+    local installed_commit=""
+    local latest_commit=""
+
+    # Verify git is available.
+    if ! command -v git &>/dev/null; then
+        log "Warning: git is not installed; unable to check for Zotify updates."
+        return 0
+    fi
+
+    # Get the commit currently installed by pipx.
+    installed_commit=$(
+        find "$HOME/.local/pipx/venvs/zotify" \
+            -name direct_url.json \
+            -type f \
+            -print -quit 2>/dev/null |
+        xargs -r grep -o '"commit_id": "[^"]*"' |
+        cut -d'"' -f4
+    )
+
+    if [[ -z "$installed_commit" ]]; then
+        log "Warning: Unable to determine installed Zotify commit."
+        return 0
+    fi
+
+    # Get the current main branch commit from GitHub.
+    latest_commit=$(git ls-remote "$zotify_repo" refs/heads/main 2>/dev/null | awk '{print $1}')
+
+    if [[ -z "$latest_commit" ]]; then
+        log "Warning: Unable to check for the latest Zotify version."
+        return 0
+    fi
+
+    if [[ "$installed_commit" != "$latest_commit" ]]; then
+        log "A newer Zotify version is available."
+        log "Installed commit: ${installed_commit:0:12}"
+        log "Latest commit:    ${latest_commit:0:12}"
+        log "Update with:"
+        log "  pipx install -f git+https://github.com/Googolplexed0/zotify.git"
+    else
+        log "Zotify is up to date (${installed_commit:0:12})."
+    fi
 }
 
 #@ DESCRIPTION: Prompt user for spotify URLs to download using zotify.
@@ -330,6 +379,9 @@ echo "$(date +"%d%b%Y.%H%M")" > "$PID_FILE"
 
 # Trap SIGTERM broadcast to ensure the PID lock is released on exit. 
 trap on_exit EXIT
+
+# Check for updates to the Zotify application
+CheckForZotifyUpdate
 
 # Prompt user for Spotify URLs to download
 PromptForSpotifyUrls
