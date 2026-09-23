@@ -160,13 +160,24 @@ function CheckForZotifyUpdate()
 
     # Get the commit currently installed by pipx.
     installed_commit=$(
-        find "$HOME/.local/pipx/venvs/zotify" \
-            -name direct_url.json \
-            -type f \
-            -print -quit 2>/dev/null |
-        xargs -r grep -o '"commit_id": "[^"]*"' |
-        cut -d'"' -f4
-    )
+    python3 - "$HOME/.local/pipx/venvs/zotify" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+
+matches = list(
+    root.glob("lib/python*/site-packages/zotify-*.dist-info/direct_url.json")
+)
+
+if not matches:
+    sys.exit(1)
+
+data = json.loads(matches[0].read_text())
+print(data["vcs_info"]["commit_id"])
+PY
+)
 
     if [[ -z "$installed_commit" ]]; then
         log "Warning: Unable to determine installed Zotify commit."
@@ -182,14 +193,15 @@ function CheckForZotifyUpdate()
     fi
 
     if [[ "$installed_commit" != "$latest_commit" ]]; then
-        log "A newer Zotify version is available."
+        log "A zotify update is available."
         log "Installed commit: ${installed_commit:0:12}"
-        log "Latest commit:    ${latest_commit:0:12}"
+        log "Latest main:    ${latest_commit:0:12}"
         log "Update with:"
-        log "  pipx install -f git+https://github.com/Googolplexed0/zotify.git"
+        log "  pipx upgrade zotify"
     else
         log "Zotify is up to date (${installed_commit:0:12})."
     fi
+    echo ""
 }
 
 #@ DESCRIPTION: Prompt user for spotify URLs to download using zotify.
