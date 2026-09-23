@@ -50,7 +50,7 @@
 
 
 # Program variables
-recipeApi="http://baileyfs02.baileysoft.lan:8001/api"
+recipeApi="https://baileyfs02.baileysoft.lan/kioskapi/api"
 pageSize=50
 recipeId=""
 recipeSearch=""
