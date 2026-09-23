@@ -158,7 +158,7 @@ function CheckForZotifyUpdate()
         return 0
     fi
 
-    # Get the commit currently installed by pipx.
+    # Use Python package metadata to obtain the Git commit of the installed Zotify package.
     installed_commit=$(
     python3 - "$HOME/.local/pipx/venvs/zotify" <<'PY'
 import json
