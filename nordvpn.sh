@@ -2,7 +2,7 @@
 #: Title: nordvpn.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Date: 07/10/2015
-#: Updated: 09/24/2026
+#: Updated: 10/01/2026
 #: Purpose: Create a split VPN tunnel
 #
 #: Usage: ./nordvpn.sh [options]
@@ -29,6 +29,7 @@
 # V2.7   - cleaned up eval_exec function
 # V2.8   - added option to validate WAN connection by attempting wget while vpn is active
 # V2.8.1 - fixed exit code when WAN connection validation fails
+# V2.8.2 - redirect background OpenVPN output without retaining caller output pipes
 #
 # Installation:
 # For ease of use, create an alias in ~/.bash_alias:
@@ -85,8 +86,8 @@ description="Establishes a split-tunnel VPN connection."
 usage="$scriptname [-d|-s|-t|-l|-o|-h|-v]"
 optionusage="Usage $0 [options]\n\n Options:\n  -d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -p:\tValidate WAN connection by pinging the test site\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
 optionexamples="Examples:\n  sudo $0 -so \t(Start the VPN tunnel with logging to console & file)\n\n" 
-date_of_creation="2026-09-24"
-version=2.8.1
+date_of_creation="2026-10-01"
+version=2.8.2
 author="Neal T. Bailey"
 copyright="Copyright, Baileysoft Solutions"
 
@@ -223,8 +224,8 @@ function EstablishVpnTunnel()
   cd $VPN_CWD
   local ip="$(getVpnIp)"
   log "Establishing OpenVPN tunnel - Host: $NORDVPN_HOST, IP: $ip"
-  log "Exec: $VPN_CMD 2>&1 &"
-  $VPN_CMD 2>&1 >> "$LOGFILE" &
+  log "Exec: $VPN_CMD >> \"$LOGFILE\" 2>&1 &"
+  $VPN_CMD >> "$LOGFILE" 2>&1 &
   
   if [ $? -ne 0 ]; then
     log "Error: OpenVPN returned an error code."

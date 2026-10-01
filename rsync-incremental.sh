@@ -102,6 +102,13 @@ function do_backup
   # Verify exclusions file
   if [ ! -f "$BAK_SOURCE/rsync-exclude" ]; then
     log "Exclusions file does not exist: \"$BAK_SOURCE/rsync-exclude\""
+    log "Create \"$BAK_SOURCE/rsync-exclude\" with one relative folder name per line."
+    log "These folders will be ignored during rsync:"
+    log "  Backup"
+    log "  Downloads"
+    log "  VMWare VMs"
+    log "  VirtualBox VMs"
+    log "  lost+found"
     exit 106
   fi
 

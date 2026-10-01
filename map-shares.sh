@@ -1,6 +1,6 @@
 #!/bin/bash
 #: Title: map-shares.sh
-#: Purpose: Mounts windows shares
+#: Purpose: Provides a graphical user interface to mount windows shares
 #: Author: Neal T. Bailey <nealbailey@hotmail.com>
 #:
 #: Changes: 
@@ -17,6 +17,7 @@
 #:                     Added checks to determine if sudoer rights are correct
 #:  08/02/2022: V0.8 - Added vers=2.0 option since mount.cifs now defaults to encrypted V3.0 smbfs 
 #:  07/22/2024: V0.9 - Added -s arg to print the mapped shares that are already mounted to the terminal
+#:  10/01/2026: V1.0 - Added config file creation guidance and sample SMB share paths
 #:
 #: Usage: $ ./map-shares.sh
 #: Depends: requires package(s)
@@ -60,8 +61,8 @@ description="Mounts remote CIFS file shares."
 usage="$scriptname"
 optionusage="-l:\t New log file (existing log is clobbered)\n  -s:\t Display already mounted shares\n  -h:\t Print help (this screen)\n  -v:\t Print version info\n"
 optionexamples=" ./"$scriptname" -l \n\n" 
-date_of_creation="2024-07-22"
-version=0.9.0
+date_of_creation="2026-10-01"
+version=1.0.0
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 
@@ -382,6 +383,11 @@ fi
 if [ ! -f "$CONFIG" ]; then
   STDOUT_LOG_ONLY="false"
   log "Error: Shares definitions file does not exist: \"$CONFIG\""
+  log "Create \"$CONFIG\" with one Samba UNC share path per line, for example:"
+  log "  //baileyfs02.baileysoft.lan/Files"
+  log "  //baileyfs02.baileysoft.lan/Music"
+  log "  //baileyfs02.baileysoft.lan/Movies"
+  log "  //baileyweb05.baileysoft.lan/Files"
   exit 105
 fi
 
