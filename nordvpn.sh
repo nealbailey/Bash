@@ -2,7 +2,7 @@
 #: Title: nordvpn.sh
 #: Author: Neal T. Bailey <nealosis@gmail.com>
 #: Date: 07/10/2015
-#: Updated: 10/01/2026
+#: Updated: 10/22/2026
 #: Purpose: Create a split VPN tunnel
 #
 #: Usage: ./nordvpn.sh [options]
@@ -30,6 +30,7 @@
 # V2.8   - added option to validate WAN connection by attempting wget while vpn is active
 # V2.8.1 - fixed exit code when WAN connection validation fails
 # V2.8.2 - redirect background OpenVPN output without retaining caller output pipes
+# V2.8.3 - changed test site from spyconverter.com to google.com for WAN connection validation
 #
 # Installation:
 # For ease of use, create an alias in ~/.bash_alias:
@@ -75,7 +76,7 @@ TORRENT_SERVICE_INSTALLED="true"         # Flag to indicate whether to do torren
 APPEND_LOG="true"                        # Append to existing log file
 STDOUT_LOG_ONLY="true"                   # Send messages to terminal and log file
 TEST_RUN="false"                         # Simulate tasks but do not execute them
-TEST_SITE="spyconverter.com"             # Site used to test WAN connection
+TEST_SITE="google.com"                   # Site used to test WAN connection
 CREATE_TUNNEL="false"                    # Create a new openvpn tunnel
 DESTROY_TUNNEL="false"                   # Close any existing openvpn tunnel
 VALIDATE_TUNNEL="false"                  # Validate the WAN VPN connection is alive
@@ -86,8 +87,8 @@ description="Establishes a split-tunnel VPN connection."
 usage="$scriptname [-d|-s|-t|-l|-o|-h|-v]"
 optionusage="Usage $0 [options]\n\n Options:\n  -d:\tDestroy existing openVPN tunnel and stop transmission-daemon\n  -s:\tStart openVPN tunnel and start transmission-daemon\n  -p:\tValidate WAN connection by pinging the test site\n  -t:\tTest run (commands are logged but not run)\n  -l:\tNew log file (existing log is clobbered)\n  -o:\tLog to console & file (default is file only)\n  -h:\tPrint help (this screen)\n  -v:\tPrint version info\n"
 optionexamples="Examples:\n  sudo $0 -so \t(Start the VPN tunnel with logging to console & file)\n\n" 
-date_of_creation="2026-10-01"
-version=2.8.2
+date_of_creation="2026-10-22"
+version=2.8.3
 author="Neal T. Bailey"
 copyright="Copyright, Baileysoft Solutions"
 
