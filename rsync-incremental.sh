@@ -5,6 +5,7 @@
 #: Updated: 02/28/2019 - new Seagate HDD volume
 #: Updated: 06/24/2025 - new Seagate (22TB) HDD 
 #: Updated: 07/07/2026 - added check to ensure backup volume is mounted
+#: Updated: 10/28/2026 - added rsync checking so success code isn't returned when rsync fails
 #: Purpose: Data backup management
 #
 #: Usage: ./rsync-incremental [options]
@@ -26,6 +27,7 @@
 # V1.0.4 - cleaned up code so there is only 2 backup tasks; Files and Videos
 # V1.0.5 - cleaned up code so that there is only 1 backup task: full server
 # V1.0.6 - added check to ensure backup volume is mounted before proceeding with backup tasks
+# V1.0.7 - added rsync checking so success code isn't returned when rsync fails
 #
 # ----------------------------------------------------------------------
 # GNU General Public License
@@ -49,11 +51,9 @@
 # Metadata
 scriptname=${0##*/}
 description="Creates incremental data backups."
-usage="$scriptname [-c|-f|-t|-o|-l|-h|-v]"
-optionusage="-c:\t\t Cleanup backups (delete obsolete files)\n  -f:\t\t Full backup (all files, not just new ones)\n  -t:\t\t Test run (commands are logged but not run)\n  -l:\t\t New log file (existing log is clobbered)\n  -o:\t\t Log to console & file (default is file only)\n  -h:\t\t Print help (this screen)\n  -v:\t\t Print version info\n"
-optionexamples=" ./"$scriptname"\n  ./"$scriptname" -tl \n\n" 
-date_of_creation="2026-07-07"
-version=1.0.6
+usage="$scriptname [options]"
+date_of_creation="2026-10-28"
+version=1.0.7
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 
@@ -127,7 +127,12 @@ function do_backup
   # Delete files from destination that are missing from source
   if [[ "$CLEAN_BACKUPS" == "true" ]]; then
     log "Executing rsync workflow: Cleanup --delete from destination where missing from source."
-    eval_exec "rsync -av --delete --ignore-existing --modify-window=1 --no-perms --no-owner --no-group --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" | tee -a \"$LOGFILE\""
+    eval_exec "rsync -av --delete --ignore-existing --modify-window=1 --no-perms --no-owner --no-group --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" 2>&1 | tee -a \"$LOGFILE\""
+    rsync_status=$?
+    if (( rsync_status != 0 )); then
+      log "ERROR: Cleanup rsync failed with exit status $rsync_status."
+      return "$rsync_status"
+    fi
     return 0
   fi
 
@@ -214,9 +219,18 @@ function on_exit()
 function usage()   
 { 
   printf "%s - %s\n" "$scriptname" "$description"
-  printf "Usage: %s\n" "$usage"
-  printf "%s  $optionusage"
-  printf "\nExamples: %s\n $optionexamples"
+  printf "\nUsage: %s\n" "$usage"
+  printf "\nOptions:\n"
+  printf "  %-4s  %s\n" \
+    "-c" "Cleanup backups (delete obsolete files)" \
+    "-f" "Full backup (all files, not just new ones)" \
+    "-t" "Test run (commands are logged but not run)" \
+    "-l" "New log file (existing log is clobbered)" \
+    "-o" "Log to console & file (default is file only)" \
+    "-h" "Print help (this screen)" \
+    "-v" "Print version info"
+  printf "\nExamples:\n"
+  printf "  ./%s\n  ./%s -tl\n\n" "$scriptname" "$scriptname"
 }
 
 #@ DESCRIPTION: Print version information
@@ -274,7 +288,7 @@ log "Started processing backup tasks."
 # the process from completing at runtime due to unknown or invalid machine configuration. 
 #
 
-# Ensure zip package is installed on server (and we know where it is)
+# Ensure rsync package is installed on server (and we know where it is)
 if [ $(which rsync | grep -c "rsync") -eq 0 ]; then
   log "Error: rsync package is not installed on this machine (not found)!" 
   exit 102
@@ -304,10 +318,16 @@ IFS=$'\n'
 
 # Execute backup tasks
 do_backup
+backup_status=$?
+
+if (( backup_status != 0 )); then
+  log "ERROR: Backup task failed with exit status $backup_status."
+  exit "$backup_status"
+fi
 
 # End Script logic
 
-# Log completion
+# Log completion only after a successful task
 log "Completed processing backup tasks."
 
 # Cleanup tasks
