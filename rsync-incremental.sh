@@ -10,7 +10,7 @@
 #
 #: Usage: ./rsync-incremental [options]
 #: Options:
-#:  -t,      : do not make any changes on the server
+#:  -t,      : preview rsync changes without modifying backup data
 #:  -l,      : create a new log file instead of appending
 #:  -o,      : send stdout/stderr messages to the console along with the log
 #:  -h,      : display help page
@@ -70,6 +70,7 @@ STDOUT_LOG_ONLY="true"
 CLEAN_BACKUPS="false"
 FULL_BACKUP="false"
 TEST_RUN="false"
+BACKUP_MARKER_CREATED="false"
 PID_FILE="/tmp/$scriptname.running"
 BAK_IFS="$IFS" # Backup Internal Field Separator (IFS) 
 
@@ -91,12 +92,17 @@ function do_backup
     exit 104
   fi
 
-  # Ensure the backup volume is mounted and accessible. 
-  # If the backup volume is not mounted then we cannot continue.
-  if [ $(findmnt "$BAK_DEST" | wc -l) -eq 0 ] ; then
+  # Both paths must be mount points, not directories on the root filesystem.
+  if ! mountpoint -q -- "$BAK_SOURCE"; then
     STDOUT_LOG_ONLY="false"
-    log "$BAK_DEST is not mounted. Please mount the backup volume and try again."
-    exit 105
+    log "ERROR: Source \"$BAK_SOURCE\" is not mounted. Aborting backup."
+    return 105
+  fi
+
+  if ! mountpoint -q -- "$BAK_DEST"; then
+    STDOUT_LOG_ONLY="false"
+    log "ERROR: Destination \"$BAK_DEST\" is not mounted. Aborting backup."
+    return 105
   fi
 
   # Verify exclusions file
@@ -118,58 +124,72 @@ function do_backup
     exit 107
   fi
 
-  # Backup Files and Movies
-  touch "$BAK_SOURCE/Backup_In_Progress"
+  if [[ "$TEST_RUN" != "true" ]]; then
+    if ! touch "$BAK_SOURCE/Backup_In_Progress"; then
+      log "ERROR: Cannot create backup in-progress marker."
+      return 108
+    fi
+    BACKUP_MARKER_CREATED="true"
+  fi
 
   # Set working directory
-  cd "$BAK_SOURCE"
+  if ! cd "$BAK_SOURCE"; then
+    log "ERROR: Cannot enter backup source \"$BAK_SOURCE\"."
+    return 109
+  fi
+
+  local -a rsync_options=(-av --modify-window=1 --no-perms --no-owner --no-group --exclude-from=rsync-exclude)
+  if [[ "$TEST_RUN" == "true" ]]; then
+    rsync_options+=(--dry-run --itemize-changes)
+  fi
 
   # Delete files from destination that are missing from source
   if [[ "$CLEAN_BACKUPS" == "true" ]]; then
     log "Executing rsync workflow: Cleanup --delete from destination where missing from source."
-    eval_exec "rsync -av --delete --ignore-existing --modify-window=1 --no-perms --no-owner --no-group --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" 2>&1 | tee -a \"$LOGFILE\""
-    rsync_status=$?
-    if (( rsync_status != 0 )); then
-      log "ERROR: Cleanup rsync failed with exit status $rsync_status."
-      return "$rsync_status"
-    fi
-    return 0
-  fi
-
-  # Backup all files and check for changes on source that need to be synced to destination
-  if [[ "$FULL_BACKUP" == "true" ]]; then
+    rsync_options+=(--delete --ignore-existing)
+  elif [[ "$FULL_BACKUP" == "true" ]]; then
     log "Executing rsync workflow: Full and complete backup --source to destination."
     # exFat USB filesystem needs special switches 
-    eval_exec "rsync -av --delete --modify-window=1 --no-perms --no-owner --no-group --no-compress --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" | tee -a \"$LOGFILE\""
-    # original command
-    #eval_exec "rsync --archive --verbose --no-compress --exclude-from=rsync-exclude \"$BAK_SOURCE\"/ \"$BAK_DEST\"/ 2>/dev/null | tee -a \"$LOGFILE\""    
-    return 0
+    rsync_options+=(--delete --no-compress)
+  else
+    log "Executing rsync workflow: Incremental backup --only new files"
+    rsync_options+=(--no-compress --ignore-existing)
   fi
 
-  # Backup only files that exist on source but not destination
-  log "Executing rsync workflow: Incremental backup --only new files"
-  eval_exec "rsync -av --modify-window=1 --no-perms --no-owner --no-group --no-compress --ignore-existing --exclude-from=rsync-exclude \"$BAK_SOURCE/\" \"$BAK_DEST/\" | tee -a \"$LOGFILE\""   
-  return 0
+  run_rsync "${rsync_options[@]}" "$BAK_SOURCE/" "$BAK_DEST/"
+  return $?
 }
 
-#@ DESCRIPTION: Executes or suppresses commands based on test-run setting.
-#@ PARAM $1: The command to execute.
-#@ REMARKS: You must use $? to get result. 
-#@ WARNING: Only the exit code for the first command in the pipeline will get returned!
-#@ USAGE: eval_exec "ls \"*.txt\" 2>&1 | tee -a \"$LOGFILE\"" ; echo $?
-#@ RETURNS: Exit code. 
-function eval_exec
+#@ DESCRIPTION: Runs rsync and logs output, reporting either pipeline failure.
+#@ PARAM: Arguments passed directly to rsync.
+function run_rsync
 {
-  local result=0
-  log "Exec: $1"
-  if [[ "$TEST_RUN" != "true" ]]; then
-    # We only care about the exit code of the sub-shell running under the eval shell
-    # So we are dumping all output from eval to the bit-bucket but capturing the 
-    # 1st exit code of the first command being executed in the sub-shell pipe-line. 
-    eval "${1}; "'PIPE=${PIPESTATUS[0]}' &> /dev/null 
-    result=$PIPE
+  local command_text
+  local -a pipeline_status
+  printf -v command_text '%q ' rsync "$@"
+  if ! log "Exec: $command_text"; then
+    printf 'ERROR: Cannot write to log file: %s\n' "$LOGFILE" >&2
+    return 1
   fi
-  return $result
+
+  if [[ "$STDOUT_LOG_ONLY" == "false" ]]; then
+    rsync "$@" 2>&1 | tee -a "$LOGFILE"
+    pipeline_status=("${PIPESTATUS[@]}")
+  else
+    rsync "$@" 2>&1 | tee -a "$LOGFILE" > /dev/null
+    pipeline_status=("${PIPESTATUS[@]}")
+  fi
+
+  if (( pipeline_status[0] != 0 )); then
+    printf 'ERROR: rsync failed with exit status %s.\n' "${pipeline_status[0]}" >&2
+  fi
+  if (( pipeline_status[1] != 0 )); then
+    printf 'ERROR: tee failed with exit status %s; backup log may be incomplete.\n' "${pipeline_status[1]}" >&2
+  fi
+  if (( pipeline_status[0] != 0 )); then
+    return "${pipeline_status[0]}"
+  fi
+  return "${pipeline_status[1]}"
 }
 
 #@ DESCRIPTION: Calculates the amounts of seconds that have passed since a file was modified.
@@ -202,8 +222,9 @@ function log()
 #@ REMARKS: Handles the SIGTERM EXIT broadcast
 function on_exit() 
 {
-  if [[ -f "$BAK_SOURCE/Backup_In_Progress" ]]; then
+  if [[ "$BACKUP_MARKER_CREATED" == "true" ]]; then
     rm -f "$BAK_SOURCE/Backup_In_Progress"
+    BACKUP_MARKER_CREATED="false"
   fi
   
   if [[ -f "$PID_FILE" ]] ; then
@@ -224,13 +245,13 @@ function usage()
   printf "  %-4s  %s\n" \
     "-c" "Cleanup backups (delete obsolete files)" \
     "-f" "Full backup (all files, not just new ones)" \
-    "-t" "Test run (commands are logged but not run)" \
+    "-t" "Dry run (preview changes; backup data is unchanged)" \
     "-l" "New log file (existing log is clobbered)" \
     "-o" "Log to console & file (default is file only)" \
     "-h" "Print help (this screen)" \
     "-v" "Print version info"
   printf "\nExamples:\n"
-  printf "  ./%s\n  ./%s -tl\n\n" "$scriptname" "$scriptname"
+  printf "  ./%s\n  ./%s -tl\n  ./%s -tco\n\n" "$scriptname" "$scriptname" "$scriptname"
 }
 
 #@ DESCRIPTION: Print version information
@@ -310,7 +331,7 @@ trap on_exit EXIT
 
 # Check for test-run action - write log preamble
 if [[ "$TEST_RUN" == "true" ]]; then
-  log "THIS IS A TEST RUN! EXEC COMMANDS WILL NOT BE ISSUED TO THE SERVER! THIS MODE IS FOR DEBUG OPERATIONS ONLY!"
+  log "DRY RUN: rsync will preview changes without modifying backup data."
 fi
 
 # Configure IFS to use '\n' delimiter

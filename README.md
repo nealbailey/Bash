@@ -23,6 +23,30 @@ A collection of Linux Bash scripts used on the `baileysoft.lan` intranet. These 
 Run a script with `-h` to view each scripts's available options and examples.
 Run a script with `-v` to view each script's version infomation.
 
+### Backup cleanup previews
+
+`rsync-incremental.sh` requires both configured backup paths to be exact mount
+points. It aborts before creating the source's in-progress marker or running rsync
+if either path is unmounted.
+
+Preview cleanup before allowing deletions:
+
+```bash
+sudo ./rsync-incremental.sh -tco
+```
+
+`-t` runs rsync with `--dry-run --itemize-changes` in incremental, full, and cleanup
+modes. Backup data is unchanged and no source in-progress marker is created;
+the script still writes its log and temporary PID file. `-o` displays the preview
+as well as logging it. Review the `*deleting` entries before running without `-t`.
+Both rsync and log-writing (`tee`) failures cause a nonzero exit; if both fail,
+the rsync status takes precedence. Mount checks do not verify device identity or
+prevent a volume from being unmounted during a run.
+
+Run the isolated regression checks with `bash tests/rsync-incremental-test.sh`.
+They use mocked backup commands, plus real rsync dry-runs against temporary
+fixtures when rsync is installed; no root access or backup volumes are required.
+
 ## Installation
 
 Clone the repository on a Linux system:
