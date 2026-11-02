@@ -5,6 +5,7 @@
 #: Changes:
 #:  10/31/2026: V1.0.0 - Initial release based on bash_template.sh
 #:  10/31/2026: V1.0.1 - Embed metadata/artwork and number files by playlist order
+#:  11/02/2026: V1.1.0 - Add playlist limits and interactive playlist setup
 #:
 #: Usage: ./yt-download.sh [options]
 #: Depends:
@@ -28,7 +29,7 @@
 #:       "name": "Playlist Name",
 #:       "url": "YouTube Playlist URL",
 #:       "path": "/mnt/md0/Files/Audiobooks/Podcasts/Playlist Name",
-#:       "limit": 0
+#:       "limit": 5
 #:     }
 #:   ]
 #: }
@@ -39,8 +40,8 @@
 #:   1. Install this script and its JSON file under /opt/audiobookshelf/.
 #:   2. Make it executable: sudo chmod 0755 /opt/audiobookshelf/yt-download.sh
 #:   3. Edit root's crontab: sudo crontab -e
-#:   4. Add this line to run at minute 0, every 3 hours:
-#:      0 */3 * * * /opt/audiobookshelf/yt-download.sh --quiet
+#:   4. Add this line to run at minute 0, every 6 hours:
+#:      0 */6 * * * /opt/audiobookshelf/yt-download.sh --quiet
 #: The archive is stored outside the watched media folder at
 #: /mnt/md0/Audiobookshelf/youtube-download-archive.txt. In Audiobookshelf,
 #: enable library watching/scheduled scans or scan the Podcast library after
@@ -67,7 +68,7 @@ set -euo pipefail
 scriptname=${0##*/}
 description="Download YouTube playlist audio for Audiobookshelf"
 date_of_creation="2026-10-31"
-script_version="1.0.1"
+script_version="1.1.0"
 author="Neal T. Bailey"
 copyright="Baileysoft Solutions"
 
@@ -85,6 +86,7 @@ LOG_FILE="/tmp/$scriptname.log"
 LOCK_FILE="/tmp/$scriptname.running"
 STDOUT_LOG_ONLY="false"
 IS_SIMULATION="false"
+ADD_PLAYLIST="false"
 EXIT_SUCCESS=0
 EXIT_GENERAL_ERROR=1
 EXIT_ALREADY_RUNNING=101
@@ -93,7 +95,9 @@ EXIT_MISSING_FILE=104
 EXIT_MISSING_DIRECTORY=105
 
 optionusage="Usage: $scriptname [options]\n\nOptions:\n  -c, --config FILE\tUse a playlist definition file\n  -q, --quiet\t\tLog to file only; suppress terminal output\n  -t, --test-run\tValidate definitions and show planned downloads without changes\n  -h, --help\t\tDisplay this help message\n  -v, --version\t\tDisplay version information"
+optionusage="${optionusage}\n  -a, --add-playlist\tInteractively add a playlist to the JSON config"
 optionexamples="Examples:\n  $scriptname\t\tDownload every configured playlist\n  $scriptname --quiet\tRun silently for cron; output goes to the log\n  $scriptname --test-run\tValidate configuration without downloading"
+optionexamples="${optionexamples}\n  $scriptname --add-playlist\tAdd a playlist and create its destination folder"
 
 # Template functions: help, version, logging, and exit metrics.
 function usage() {
@@ -130,7 +134,11 @@ function on_exit() {
 function check_dependencies() {
   local missing=()
   local tool
-  for tool in yt-dlp ffmpeg jq flock tee date mkdir realpath dirname chmod id; do
+  local required_tools=(yt-dlp ffmpeg jq flock tee date mkdir realpath dirname chmod id)
+  if [[ "${1:-}" == "add-playlist" ]]; then
+    required_tools=(jq flock date mkdir realpath chmod id mktemp mv rm)
+  fi
+  for tool in "${required_tools[@]}"; do
     if ! command -v "$tool" >/dev/null 2>&1; then
       missing+=("$tool")
     fi
@@ -139,9 +147,114 @@ function check_dependencies() {
   if ((${#missing[@]} > 0)); then
     log "ERROR: Required command(s) missing: ${missing[*]}"
     log "Install the dependencies on Ubuntu with:"
-    log "  sudo apt update && sudo apt install -y yt-dlp ffmpeg jq util-linux coreutils"
+    if [[ "${1:-}" == "add-playlist" ]]; then
+      log "  sudo apt update && sudo apt install -y jq util-linux coreutils"
+    else
+      log "  sudo apt update && sudo apt install -y yt-dlp ffmpeg jq util-linux coreutils"
+    fi
     return "$EXIT_MISSING_DEPENDENCY"
   fi
+}
+
+function is_youtube_playlist_url() {
+  case "$1" in
+    https://youtube.com/playlist\?*|https://www.youtube.com/playlist\?*|https://music.youtube.com/playlist\?*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+function is_valid_config() {
+  jq -e '
+    type == "object" and
+    (.playlists | type == "array" and length > 0) and
+    all(.playlists[];
+      type == "object" and
+      (.name | type == "string" and length > 0 and (contains("\u0000") | not)) and
+      (.url | type == "string" and length > 0 and (contains("\u0000") | not)) and
+      (.path | type == "string" and length > 0 and (contains("\u0000") | not)) and
+      (.limit | type == "number" and floor == . and . >= 0)
+    )
+  ' "$1" >/dev/null
+}
+
+function add_playlist() {
+  local playlist_name=""
+  local playlist_url=""
+  local resolved_root
+  local resolved_path
+  local temporary_config=""
+
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    log "ERROR: Playlist definition file not found: $CONFIG_FILE"
+    return "$EXIT_MISSING_FILE"
+  fi
+  if ! is_valid_config "$CONFIG_FILE"; then
+    log "ERROR: Invalid JSON or playlist schema in $CONFIG_FILE"
+    log 'Expected a non-empty "playlists" array with non-empty name, url, and path strings, plus a non-negative integer limit.'
+    return "$EXIT_GENERAL_ERROR"
+  fi
+
+  if ! IFS= read -r -p "Playlist name: " playlist_name ||
+     [[ -z "${playlist_name//[[:space:]]/}" || "$playlist_name" == "." ||
+        "$playlist_name" == ".." || "$playlist_name" == */* ||
+        "$playlist_name" == *$'\r'* ]]; then
+    log "ERROR: Playlist name must be non-empty and cannot contain a slash."
+    return "$EXIT_GENERAL_ERROR"
+  fi
+  if ! IFS= read -r -p "YouTube playlist URL: " playlist_url; then
+    log "ERROR: Could not read playlist URL."
+    return "$EXIT_GENERAL_ERROR"
+  fi
+  if ! is_youtube_playlist_url "$playlist_url"; then
+    log "ERROR: Only HTTPS YouTube playlist URLs are supported: $playlist_url"
+    return "$EXIT_GENERAL_ERROR"
+  fi
+  if jq -e --arg name "$playlist_name" \
+      'any(.playlists[]; .name == $name)' "$CONFIG_FILE" >/dev/null; then
+    log "ERROR: A playlist with this name already exists: $playlist_name"
+    return "$EXIT_GENERAL_ERROR"
+  fi
+
+  resolved_root=$(realpath -m -- "$PODCAST_ROOT")
+  resolved_path=$(realpath -m -- "$resolved_root/$playlist_name")
+  case "$resolved_path" in
+    "$resolved_root"/*) ;;
+    *)
+      log "ERROR: Destination must be below $resolved_root: $playlist_name"
+      return "$EXIT_GENERAL_ERROR"
+      ;;
+  esac
+
+  if ! temporary_config=$(mktemp "${CONFIG_FILE}.tmp.XXXXXX"); then
+    log "ERROR: Could not create a temporary config file beside $CONFIG_FILE"
+    return "$EXIT_GENERAL_ERROR"
+  fi
+  if ! jq --arg name "$playlist_name" --arg url "$playlist_url" \
+      --arg path "$resolved_path" \
+      '.playlists += [{name: $name, url: $url, path: $path, limit: 5}]' \
+      "$CONFIG_FILE" > "$temporary_config"; then
+    rm -f -- "$temporary_config"
+    log "ERROR: Could not update playlist config: $CONFIG_FILE"
+    return "$EXIT_GENERAL_ERROR"
+  fi
+  if ! chmod --reference="$CONFIG_FILE" "$temporary_config"; then
+    rm -f -- "$temporary_config"
+    log "ERROR: Could not preserve permissions for the updated config."
+    return "$EXIT_GENERAL_ERROR"
+  fi
+  if ! mkdir -p -- "$resolved_path"; then
+    rm -f -- "$temporary_config"
+    log "ERROR: Could not create destination directory: $resolved_path"
+    return "$EXIT_MISSING_DIRECTORY"
+  fi
+  if ! mv -- "$temporary_config" "$CONFIG_FILE"; then
+    rm -f -- "$temporary_config"
+    log "ERROR: Could not replace playlist config: $CONFIG_FILE"
+    return "$EXIT_GENERAL_ERROR"
+  fi
+
+  log "Added playlist '$playlist_name' with download limit 5."
+  log "Destination: $resolved_path"
 }
 
 function run_ytdlp() {
@@ -227,17 +340,7 @@ function process_config() {
     return "$EXIT_MISSING_FILE"
   fi
 
-  if ! jq -e '
-    type == "object" and
-    (.playlists | type == "array" and length > 0) and
-    all(.playlists[];
-      type == "object" and
-      (.name | type == "string" and length > 0) and
-      (.url | type == "string" and length > 0 and (contains("\u0000") | not)) and
-      (.path | type == "string" and length > 0 and (contains("\u0000") | not)) and
-      (.limit | type == "number" and floor == . and . >= 0)
-    )
-  ' "$CONFIG_FILE" >/dev/null; then
+  if ! is_valid_config "$CONFIG_FILE"; then
     log "ERROR: Invalid JSON or playlist schema in $CONFIG_FILE"
     log 'Expected a non-empty "playlists" array with non-empty name, url, and path strings, plus a non-negative integer limit.'
     return "$EXIT_GENERAL_ERROR"
@@ -247,13 +350,10 @@ function process_config() {
   while IFS= read -r -d '' pending_url &&
         IFS= read -r -d '' pending_path &&
         IFS= read -r -d '' dl_limit; do
-    case "$pending_url" in
-      https://youtube.com/playlist\?*|https://www.youtube.com/playlist\?*|https://music.youtube.com/playlist\?*) ;;
-      *)
-        log "ERROR: Only HTTPS YouTube playlist URLs are supported: $pending_url"
-        return "$EXIT_GENERAL_ERROR"
-        ;;
-    esac
+    if ! is_youtube_playlist_url "$pending_url"; then
+      log "ERROR: Only HTTPS YouTube playlist URLs are supported: $pending_url"
+      return "$EXIT_GENERAL_ERROR"
+    fi
     if [[ "$pending_path" != /* ]]; then
       log "ERROR: Destination path must be an absolute path: $pending_path"
       return "$EXIT_GENERAL_ERROR"
@@ -294,6 +394,10 @@ while (($# > 0)); do
       STDOUT_LOG_ONLY="true"
       shift
       ;;
+    -a|--add-playlist)
+      ADD_PLAYLIST="true"
+      shift
+      ;;
     -t|--test-run)
       IS_SIMULATION="true"
       shift
@@ -314,6 +418,11 @@ while (($# > 0)); do
   esac
 done
 
+if [[ "$ADD_PLAYLIST" == "true" && "$IS_SIMULATION" == "true" ]]; then
+  printf 'ERROR: --add-playlist cannot be combined with --test-run.\n' >&2
+  exit "$EXIT_GENERAL_ERROR"
+fi
+
 # Match the template's per-run log and non-blocking singleton lock behavior.
 # Use shell redirection so a missing `touch` does not prevent dependency reporting.
 : > "$LOG_FILE"
@@ -326,7 +435,11 @@ if [[ "$IS_SIMULATION" == "true" ]]; then
   log "THIS IS A TEST RUN: no directories or downloads will be created."
 fi
 
-check_dependencies
+if [[ "$ADD_PLAYLIST" == "true" ]]; then
+  check_dependencies add-playlist
+else
+  check_dependencies
+fi
 chmod 644 "$LOG_FILE"
 
 exec 200>"$LOCK_FILE"
@@ -337,4 +450,8 @@ if ! flock -n 200; then
   exit "$EXIT_ALREADY_RUNNING"
 fi
 echo "$$" >&200
-process_config
+if [[ "$ADD_PLAYLIST" == "true" ]]; then
+  add_playlist
+else
+  process_config
+fi

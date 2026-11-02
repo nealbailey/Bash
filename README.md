@@ -18,6 +18,7 @@ A collection of Linux Bash scripts used on the `baileysoft.lan` intranet. These 
 | [`rsync-incremental.sh`](rsync-incremental.sh) | Nightly incremental mdadm RAID backups to USB. | `./rsync-incremental.sh [options]` |
 | [`trade_setup.sh`](trade_setup.sh) | Create and manage various trade setups. | `./trade_setup.sh [options]` |
 | [`unmount-all-shares.sh`](unmount-all-shares.sh) | Automatically unmount all mounts Windows samba shares. | `./unmount-all-shares.sh` |
+| [`yt-download.sh`](yt-download.sh) | Downloads YouTube playlist audio to Audiobookshelf podcast folders. | `./yt-download.sh [options]` |
 | [`zotify_runner.sh`](zotify_runner.sh) | Rips hi-quality mp3s from Spotify and copies them to a file server. | `./zotify_runner.sh` |
 
 Run a script with `-h` to view each scripts's available options and examples.
@@ -46,6 +47,42 @@ prevent a volume from being unmounted during a run.
 Run the isolated regression checks with `bash tests/rsync-incremental-test.sh`.
 They use mocked backup commands, plus real rsync dry-runs against temporary
 fixtures when rsync is installed; no root access or backup volumes are required.
+
+### YouTube playlist downloads
+
+[`yt-download.sh`](yt-download.sh) uses `yt-dlp`, `ffmpeg`, and `jq` to download
+playlist audio as MP3 files with embedded metadata and artwork. Install the
+dependencies on Ubuntu with:
+
+```bash
+sudo apt install -y yt-dlp ffmpeg jq util-linux coreutils
+```
+
+By default, the script reads [`yt-download.json`](yt-download.json) from its
+own directory. Each playlist entry includes a name, HTTPS YouTube playlist URL,
+destination path under `/mnt/md0/Files/Audiobooks/Podcasts`, and download limit:
+
+```json
+{
+  "playlists": [
+    {
+      "name": "Playlist Name",
+      "url": "https://www.youtube.com/playlist?list=PLAYLIST_ID",
+      "path": "/mnt/md0/Files/Audiobooks/Podcasts/Playlist Name",
+      "limit": 5
+    }
+  ]
+}
+```
+
+A limit of `0` downloads the entire playlist; a positive integer downloads up
+to that many items starting from the first playlist item. Use
+`--add-playlist` to interactively add an entry and create its destination
+folder; new entries default to a limit of `5`. Use `--config FILE` to choose a
+different JSON file and `--test-run` to validate the configuration and preview
+downloads without creating folders or downloading files. For scheduled runs,
+`--quiet` writes output to the script's log file only. Run `./yt-download.sh -h`
+for all options.
 
 ## Installation
 
