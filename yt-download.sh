@@ -27,10 +27,13 @@
 #:     {
 #:       "name": "Playlist Name",
 #:       "url": "YouTube Playlist URL",
-#:       "path": "/mnt/md0/Files/Audiobooks/Podcasts/Playlist Name"
+#:       "path": "/mnt/md0/Files/Audiobooks/Podcasts/Playlist Name",
+#:       "limit": 0
 #:     }
 #:   ]
 #: }
+#: A limit of 0 downloads the full playlist; a positive limit caps downloaded
+#: items starting from the first playlist item.
 #:
 #: Cron setup (runs as root so it can write into the server's podcast folder):
 #:   1. Install this script and its JSON file under /opt/audiobookshelf/.
@@ -144,10 +147,15 @@ function check_dependencies() {
 function run_ytdlp() {
   local url=$1
   local destination=$2
+  local dl_limit=$3
   local status
 
   if [[ "$IS_SIMULATION" == "true" ]]; then
-    log "TEST RUN: would download $url into $destination"
+    if [[ "$dl_limit" != "0" ]]; then
+      log "TEST RUN: would download $url into $destination with --playlist-items 1:$dl_limit"
+    else
+      log "TEST RUN: would download $url into $destination"
+    fi
     return "$EXIT_SUCCESS"
   fi
 
@@ -178,8 +186,12 @@ function run_ytdlp() {
     --download-archive "$ARCHIVE_FILE"
     --output "$destination/%(playlist_index)03d - %(title)s [%(id)s].%(ext)s"
     --no-progress
-    --yes-playlist
-    "$url")
+    --yes-playlist)
+
+  if [[ "$dl_limit" != "0" ]]; then
+    command+=(--playlist-items "1:$dl_limit")
+  fi
+  command+=("$url")
 
   if [[ "$STDOUT_LOG_ONLY" == "true" ]]; then
     if "${command[@]}" >> "$LOG_FILE" 2>&1; then
@@ -203,6 +215,7 @@ function run_ytdlp() {
 function process_config() {
   local pending_url=""
   local pending_path=""
+  local dl_limit=""
   local record_count=0
   local failed_count=0
   local resolved_root
@@ -221,17 +234,19 @@ function process_config() {
       type == "object" and
       (.name | type == "string" and length > 0) and
       (.url | type == "string" and length > 0 and (contains("\u0000") | not)) and
-      (.path | type == "string" and length > 0 and (contains("\u0000") | not))
+      (.path | type == "string" and length > 0 and (contains("\u0000") | not)) and
+      (.limit | type == "number" and floor == . and . >= 0)
     )
   ' "$CONFIG_FILE" >/dev/null; then
     log "ERROR: Invalid JSON or playlist schema in $CONFIG_FILE"
-    log 'Expected a non-empty "playlists" array with non-empty name, url, and path strings.'
+    log 'Expected a non-empty "playlists" array with non-empty name, url, and path strings, plus a non-negative integer limit.'
     return "$EXIT_GENERAL_ERROR"
   fi
 
   resolved_root=$(realpath -m -- "$PODCAST_ROOT")
   while IFS= read -r -d '' pending_url &&
-        IFS= read -r -d '' pending_path; do
+        IFS= read -r -d '' pending_path &&
+        IFS= read -r -d '' dl_limit; do
     case "$pending_url" in
       https://youtube.com/playlist\?*|https://www.youtube.com/playlist\?*|https://music.youtube.com/playlist\?*) ;;
       *)
@@ -252,10 +267,10 @@ function process_config() {
         ;;
     esac
     ((record_count += 1))
-    if ! run_ytdlp "$pending_url" "$resolved_path"; then
+    if ! run_ytdlp "$pending_url" "$resolved_path" "$dl_limit"; then
       failed_count=$((failed_count + 1))
     fi
-  done < <(jq -j '.playlists[] | .url, "\u0000", .path, "\u0000"' "$CONFIG_FILE")
+  done < <(jq -j '.playlists[] | .url, "\u0000", .path, "\u0000", (.limit | floor | tostring), "\u0000"' "$CONFIG_FILE")
 
   if ((failed_count > 0)); then
     log "ERROR: $failed_count of $record_count playlist download(s) failed."
