@@ -350,12 +350,13 @@ function process_config() {
   fi
 
   resolved_root=$(realpath -m -- "$PODCAST_ROOT")
-  while IFS= read -r -d '' pending_url &&
+  while IFS= read -r -d '' pending_name &&
+        IFS= read -r -d '' pending_url &&
         IFS= read -r -d '' pending_path &&
         IFS= read -r -d '' dl_limit &&
         IFS= read -r -d '' pending_enabled; do
     if [[ "$pending_enabled" != "true" ]]; then
-      log "Skipping disabled playlist: $pending_url"
+      log "Skipping disabled playlist: $pending_name"
       continue
     fi
     if ! is_youtube_playlist_url "$pending_url"; then
@@ -378,7 +379,7 @@ function process_config() {
     if ! run_ytdlp "$pending_url" "$resolved_path" "$dl_limit"; then
       failed_count=$((failed_count + 1))
     fi
-  done < <(jq -j '.playlists[] | .url, "\u0000", .path, "\u0000", (.limit | floor | tostring), "\u0000", (.enabled | tostring), "\u0000"' "$CONFIG_FILE")
+  done < <(jq -j '.playlists[] | .name, "\u0000", .url, "\u0000", .path, "\u0000", (.limit | floor | tostring), "\u0000", (.enabled | tostring), "\u0000"' "$CONFIG_FILE")
 
   if ((failed_count > 0)); then
     log "ERROR: $failed_count of $record_count playlist download(s) failed."
