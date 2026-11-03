@@ -20,7 +20,8 @@
 #: Playlist definitions are read from the adjacent file:
 #:   yt-download.json
 #: The JSON file contains a `playlists` array of objects with `name`, `url`,
-#: and `path` strings. Paths must be inside /mnt/md0/Files/Audiobooks/Podcasts.
+#: `path` strings, `limit` integer, and `enabled` boolean. Paths must be inside
+#: /mnt/md0/Files/Audiobooks/Podcasts.
 #:
 #: Basic JSON file structure:
 #: {
@@ -29,12 +30,14 @@
 #:       "name": "Playlist Name",
 #:       "url": "YouTube Playlist URL",
 #:       "path": "/mnt/md0/Files/Audiobooks/Podcasts/Playlist Name",
-#:       "limit": 5
+#:       "limit": 5,
+#:       "enabled": true
 #:     }
 #:   ]
 #: }
 #: A limit of 0 downloads the full playlist; a positive limit caps downloaded
-#: items starting from the first playlist item.
+#: items starting from the first playlist item. Set enabled to false to skip
+#: processing the playlist without removing its definition.
 #:
 #: Cron setup (runs as root so it can write into the server's podcast folder):
 #:   1. Install this script and its JSON file under /opt/audiobookshelf/.
@@ -231,7 +234,7 @@ function add_playlist() {
   fi
   if ! jq --arg name "$playlist_name" --arg url "$playlist_url" \
       --arg path "$resolved_path" \
-      '.playlists += [{name: $name, url: $url, path: $path, limit: 5}]' \
+      '.playlists += [{name: $name, url: $url, path: $path, limit: 5, enabled: true}]' \
       "$CONFIG_FILE" > "$temporary_config"; then
     rm -f -- "$temporary_config"
     log "ERROR: Could not update playlist config: $CONFIG_FILE"
@@ -349,7 +352,12 @@ function process_config() {
   resolved_root=$(realpath -m -- "$PODCAST_ROOT")
   while IFS= read -r -d '' pending_url &&
         IFS= read -r -d '' pending_path &&
-        IFS= read -r -d '' dl_limit; do
+        IFS= read -r -d '' dl_limit &&
+        IFS= read -r -d '' pending_enabled; do
+    if [[ "$pending_enabled" != "true" ]]; then
+      log "Skipping disabled playlist: $pending_url"
+      continue
+    fi
     if ! is_youtube_playlist_url "$pending_url"; then
       log "ERROR: Only HTTPS YouTube playlist URLs are supported: $pending_url"
       return "$EXIT_GENERAL_ERROR"
@@ -370,7 +378,7 @@ function process_config() {
     if ! run_ytdlp "$pending_url" "$resolved_path" "$dl_limit"; then
       failed_count=$((failed_count + 1))
     fi
-  done < <(jq -j '.playlists[] | .url, "\u0000", .path, "\u0000", (.limit | floor | tostring), "\u0000"' "$CONFIG_FILE")
+  done < <(jq -j '.playlists[] | .url, "\u0000", .path, "\u0000", (.limit | floor | tostring), "\u0000", (.enabled | tostring), "\u0000"' "$CONFIG_FILE")
 
   if ((failed_count > 0)); then
     log "ERROR: $failed_count of $record_count playlist download(s) failed."

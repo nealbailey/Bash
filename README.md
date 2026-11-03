@@ -60,7 +60,8 @@ sudo apt install -y yt-dlp ffmpeg jq util-linux coreutils
 
 By default, the script reads [`yt-download.json`](yt-download.json) from its
 own directory. Each playlist entry includes a name, HTTPS YouTube playlist URL,
-destination path under `/mnt/md0/Files/Audiobooks/Podcasts`, and download limit:
+destination path under `/mnt/md0/Files/Audiobooks/Podcasts`, download limit,
+and enabled flag:
 
 ```json
 {
@@ -69,20 +70,22 @@ destination path under `/mnt/md0/Files/Audiobooks/Podcasts`, and download limit:
       "name": "Playlist Name",
       "url": "https://www.youtube.com/playlist?list=PLAYLIST_ID",
       "path": "/mnt/md0/Files/Audiobooks/Podcasts/Playlist Name",
-      "limit": 5
+      "limit": 5,
+      "enabled": true
     }
   ]
 }
 ```
 
 A limit of `0` downloads the entire playlist; a positive integer downloads up
-to that many items starting from the first playlist item. Use
-`--add-playlist` to interactively add an entry and create its destination
-folder; new entries default to a limit of `5`. Use `--config FILE` to choose a
-different JSON file and `--test-run` to validate the configuration and preview
-downloads without creating folders or downloading files. For scheduled runs,
-`--quiet` writes output to the script's log file only. Run `./yt-download.sh -h`
-for all options.
+to that many items starting from the first playlist item. Set `enabled` to
+`false` to skip processing the playlist without removing its definition from
+the configuration file. Use `--add-playlist` to interactively add an entry and
+create its destination folder; new entries default to a limit of `5` and
+enabled set to `true`. Use `--config FILE` to choose a different JSON file and
+`--test-run` to validate the configuration and preview downloads without
+creating folders or downloading files. For scheduled runs, `--quiet` writes
+output to the script's log file only. Run `./yt-download.sh -h` for all options.
 
 ## Installation
 
