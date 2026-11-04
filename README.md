@@ -87,6 +87,15 @@ enabled set to `true`. Use `--config FILE` to choose a different JSON file and
 creating folders or downloading files. For scheduled runs, `--quiet` writes
 output to the script's log file only. Run `./yt-download.sh -h` for all options.
 
+Both HTTPS `/playlist?list=PLAYLIST_ID` links and
+`/watch?v=VIDEO_ID&list=PLAYLIST_ID` links are supported on `youtube.com`,
+`www.youtube.com`, and `music.youtube.com`. A non-empty `list` parameter is
+required; a video link without it is not a playlist.
+
+Run the isolated playlist regression checks with
+`bash tests/yt-download-test.sh`. They use temporary config and destination
+folders without downloading media or accessing the server's podcast folders.
+
 ## Installation
 
 Clone the repository on a Linux system:

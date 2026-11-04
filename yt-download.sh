@@ -160,8 +160,15 @@ function check_dependencies() {
 }
 
 function is_youtube_playlist_url() {
+  local query
+  local playlist_parameter='(^|&)list=[A-Za-z0-9_-]+(&|$)'
   case "$1" in
-    https://youtube.com/playlist\?*|https://www.youtube.com/playlist\?*|https://music.youtube.com/playlist\?*) return 0 ;;
+    https://youtube.com/playlist\?*|https://www.youtube.com/playlist\?*|https://music.youtube.com/playlist\?*|\
+    https://youtube.com/watch\?*|https://www.youtube.com/watch\?*|https://music.youtube.com/watch\?*)
+      query=${1#*\?}
+      query=${query%%#*}
+      [[ "$query" =~ $playlist_parameter ]]
+      ;;
     *) return 1 ;;
   esac
 }
@@ -209,7 +216,7 @@ function add_playlist() {
     return "$EXIT_GENERAL_ERROR"
   fi
   if ! is_youtube_playlist_url "$playlist_url"; then
-    log "ERROR: Only HTTPS YouTube playlist URLs are supported: $playlist_url"
+    log "ERROR: Expected an HTTPS YouTube /playlist or /watch URL with a non-empty list parameter: $playlist_url"
     return "$EXIT_GENERAL_ERROR"
   fi
   if jq -e --arg name "$playlist_name" \
@@ -360,7 +367,7 @@ function process_config() {
       continue
     fi
     if ! is_youtube_playlist_url "$pending_url"; then
-      log "ERROR: Only HTTPS YouTube playlist URLs are supported: $pending_url"
+      log "ERROR: Expected an HTTPS YouTube /playlist or /watch URL with a non-empty list parameter: $pending_url"
       return "$EXIT_GENERAL_ERROR"
     fi
     if [[ "$pending_path" != /* ]]; then
